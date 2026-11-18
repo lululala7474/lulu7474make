@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="전국날씨">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>전국날씨</title>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1 id="title">전국날씨</h1>
+    <button id="refresh" aria-label="새로고침">⟳</button>
+  </div>
+  <div id="status" class="status"></div>
+</header>
+
+<main>
+  <section id="list-view">
+    <div id="national" class="summary" hidden></div>
+    <div id="grid" class="grid"></div>
+  </section>
+
+  <section id="detail-view" hidden>
+    <button id="back" class="back">‹ 전체 지역</button>
+    <div id="detail"></div>
+  </section>
+</main>
+
+<footer>날씨 데이터: Open-Meteo.com · 최근 받은 7일 예보는 휴대폰에 저장되어 오프라인에서도 볼 수 있습니다</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
