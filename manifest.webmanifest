@@ -1,0 +1,24 @@
+{
+  "name": "하루 플래너 - 일정·할 일·목표·일기",
+  "short_name": "하루 플래너",
+  "description": "일정, 할 일 체크리스트, 목표, 중요 사항, 일기를 한곳에서 관리하는 개인 생활 플래너",
+  "lang": "ko",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "할 일 체크리스트", "short_name": "할 일", "url": "./index.html#todo" },
+    { "name": "일기 쓰기", "short_name": "일기", "url": "./index.html#diary" }
+  ]
+}
