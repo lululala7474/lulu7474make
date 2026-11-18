@@ -1441,6 +1441,12 @@
       toast('백업 파일을 저장했습니다.');
       if (state.view === 'more') render();
     };
+    // 안드로이드 앱(APK)으로 실행 중이면 다운로드 폴더에 직접 저장
+    if (window.HaruAndroid && typeof window.HaruAndroid.saveFile === 'function') {
+      const r = window.HaruAndroid.saveFile(filename, json);
+      if (r === 'ok') markDone(); else toast('백업 파일을 저장하지 못했어요.', 'error');
+      return;
+    }
     if (IS_ARTIFACT) {
       (async () => {
         const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
@@ -1753,7 +1759,7 @@
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
     // 오프라인 사용을 위한 Service Worker 등록 (HTTPS 또는 localhost 에서만 동작)
-    if (!IS_ARTIFACT && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    if (!IS_ARTIFACT && !window.HaruAndroid && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js').catch((err) => console.warn('Service Worker 등록 실패', err));
       });

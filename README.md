@@ -17,5 +17,6 @@
 ## APK 다시 받기
 - [전국날씨 APK](downloads/jeonguk-nalssi.apk)
 - [환율노트 APK](downloads/hwanyul-note.apk)
+- [하루 플래너 APK](downloads/haru-planner.apk)
 
 파일을 연 뒤 오른쪽 위의 **다운로드(↓)** 버튼을 누르면 받을 수 있습니다.
