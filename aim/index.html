@@ -40,6 +40,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html.playing, html.playing body { overflow: hidden; overscroll-behavior: none; }
 body {
   background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -194,7 +195,10 @@ details ul { padding-left: 20px; margin: 8px 0 0; display: flex; flex-direction:
       <h2 id="ov-title">플릭 연습</h2>
       <p id="ov-text"></p>
       <p class="note" id="ov-note" hidden></p>
-      <button class="btn big" id="start" type="button">시작하기</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+        <button class="btn big" id="start" type="button">시작하기</button>
+        <button class="btn big" id="see" type="button" hidden style="background:#e8f0ec">결과 보기 ↓</button>
+      </div>
       <p id="ov-esc">연습 중 <b>Esc</b>를 누르면 바로 끝나요.</p>
     </div>
   </div>
@@ -443,6 +447,7 @@ function begin(lockOn) {
   else if (S.mode === 'follow') spawnFollow();
   else spawnTrack();
   $('#overlay').hidden = true;
+  document.documentElement.classList.add('playing');
   cv.style.cursor = lockOn ? 'none' : 'crosshair';
 }
 function requestLock() {
@@ -463,6 +468,7 @@ function requestLock() {
 }
 $('#start').addEventListener('click', () => {
   try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) {}
+  $('.range').scrollIntoView({ block: 'center' });
   fit();
   if (cfg.lock && cv.requestPointerLock) {
     requestLock().then(() => begin(true)).catch(() => {
@@ -472,11 +478,21 @@ $('#start').addEventListener('click', () => {
   } else begin(false);
 });
 document.addEventListener('pointerlockchange', () => { if (S.running && S.lock && !isLocked()) endRun(true); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.running && !S.lock) endRun(true); });
+document.addEventListener('keydown', e => {
+  if (!S.running) return;
+  if (e.key === 'Escape' && !S.lock) endRun(true);
+  if ([' ', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) e.preventDefault();
+});
+// 연습 중에는 휠·가운데 버튼·터치로 화면이 움직이지 않게 막기
+addEventListener('wheel', e => { if (S.running) e.preventDefault(); }, { passive: false });
+addEventListener('touchmove', e => { if (S.running) e.preventDefault(); }, { passive: false });
+document.addEventListener('mousedown', e => { if (S.running && e.button === 1) e.preventDefault(); });
+$('#see').addEventListener('click', () => $('#verdict').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
 
 function endRun(early) {
   if (!S.running) return;
   S.running = false;
+  document.documentElement.classList.remove('playing');
   if (isLocked()) document.exitPointerLock();
   cv.style.cursor = 'crosshair';
   const res = summarize(early);
@@ -491,7 +507,7 @@ function endRun(early) {
   $('#start').textContent = '다시 하기';
   updateOverlay();
   $('#overlay').hidden = false;
-  if (res) $('#verdict').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
+  $('#see').hidden = !res;
 }
 
 /* ---------- input ---------- */
