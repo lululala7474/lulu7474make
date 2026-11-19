@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>조준 감도 연습장</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: 사격장(캔버스) 하나가 화면 중심, 아래에 판정 → 통계/분포도 → 감도 계산기 → 기록 순서 */
+:root {
+  --bg: #eef1ef;
+  --panel: #ffffff;
+  --ink: #14211d;
+  --muted: #5a6a64;
+  --line: #d4dcd8;
+  --accent: #0d8a6a;
+  --accent-ink: #ffffff;
+  --over: #d9482f;
+  --under: #2a74d6;
+  --good: #1a9a5e;
+  --chip: #e4ebe8;
+  --font-display: "Chakra Petch", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1412; --panel: #141e1b; --ink: #e4ece9; --muted: #92a39d; --line: #24332e;
+    --accent: #36c49c; --accent-ink: #062019; --over: #ff7a62; --under: #6aa8ff; --good: #4fd394; --chip: #1c2925;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1412; --panel: #141e1b; --ink: #e4ece9; --muted: #92a39d; --line: #24332e;
+  --accent: #36c49c; --accent-ink: #062019; --over: #ff7a62; --under: #6aa8ff; --good: #4fd394; --chip: #1c2925;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html.playing, html.playing body { overflow: hidden; overscroll-behavior: none; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+h1 { font-family: var(--font-display); font-size: 28px; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+header p { margin: 0; color: var(--muted); }
+h2 { font-size: 17px; margin: 0; text-wrap: balance; }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+
+/* controls */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--chip); border-radius: 10px; padding: 3px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted); user-select: none; }
+.seg input:checked + label { background: var(--panel); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; user-select: none; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* range */
+.range { position: relative; border-radius: 14px; overflow: hidden; background: #16201d; touch-action: none; }
+#range { display: block; width: 100%; cursor: crosshair; }
+.overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 20px; text-align: center; color: #e8f0ec;
+  background: rgb(10 16 14 / .62); backdrop-filter: blur(2px);
+}
+.overlay h2 { font-family: var(--font-display); font-size: 24px; color: #fff; }
+.overlay p { margin: 0; max-width: 46ch; color: #bfd0c9; font-size: 14px; }
+.overlay .note { color: #ffc9a8; }
+.btn {
+  font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 10px 18px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink);
+}
+.btn.big { font-size: 17px; padding: 12px 28px; background: #ff8a3d; color: #1d0e03; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn:hover { filter: brightness(1.06); }
+
+/* results */
+.results { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.verdict { grid-column: 1 / -1; border-left: 6px solid var(--muted); }
+.verdict.over { border-left-color: var(--over); }
+.verdict.under { border-left-color: var(--under); }
+.verdict.good { border-left-color: var(--good); }
+.vrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; justify-content: space-between; }
+.verdict .vhead { font-size: 22px; font-weight: 700; margin: 0; text-wrap: balance; color: var(--ink); }
+.verdict p { margin: 0; color: var(--muted); max-width: 70ch; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.pill.sample { background: #ffe3cc; color: #7a3a10; }
+.rec { display: flex; align-items: baseline; gap: 10px; font-family: var(--font-display); }
+.rec .from { font-size: 20px; color: var(--muted); }
+.rec .to { font-size: 34px; font-weight: 700; }
+.verdict.over .to { color: var(--over); }
+.verdict.under .to { color: var(--under); }
+.verdict.good .to { color: var(--good); }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 10px; background: var(--chip); }
+.stat b { font-family: var(--font-display); font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat span { font-size: 12px; color: var(--muted); }
+#scatter { width: 100%; max-width: 100%; aspect-ratio: 4 / 3; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+
+/* calc */
+.calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.field input, .field select {
+  font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; width: 100%; font-variant-numeric: tabular-nums;
+}
+.field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.outs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.out { padding: 12px; border-radius: 10px; border: 1px dashed var(--line); }
+.out b { display: block; font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; }
+.out span { font-size: 12px; color: var(--muted); }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+
+/* history */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); font-weight: 700; }
+td.num { font-family: var(--font-mono); font-size: 13px; }
+.b-over { color: var(--over); } .b-under { color: var(--under); } .b-good { color: var(--good); }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+details { color: var(--muted); font-size: 14px; }
+details summary { cursor: pointer; color: var(--ink); font-weight: 700; }
+details ul { padding-left: 20px; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 500;
+  max-width: calc(100% - 32px); z-index: 20;
+}
+@media (max-width: 760px) {
+  .results { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 24px; }
+  .verdict .vhead { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>조준 <span>감도</span> 연습장</h1>
+    <p>표적을 맞히는 동안 마우스 움직임을 분석해서 감도가 높은지 낮은지 알려줘요.</p>
+  </header>
+
+  <section class="controls" aria-label="연습 설정">
+    <div class="group">
+      <span class="label">모드</span>
+      <div class="seg" role="radiogroup" aria-label="모드">
+        <input type="radio" name="mode" id="m-flick" value="flick"><label for="m-flick">플릭</label>
+        <input type="radio" name="mode" id="m-grid" value="grid"><label for="m-grid">그리드</label>
+        <input type="radio" name="mode" id="m-track" value="track"><label for="m-track">트래킹</label>
+        <input type="radio" name="mode" id="m-point" value="point"><label for="m-point">포인트 클릭</label>
+        <input type="radio" name="mode" id="m-follow" value="follow"><label for="m-follow">포인트 따라가기</label>
+      </div>
+    </div>
+    <div class="group">
+      <span class="label">표적</span>
+      <div class="seg" role="radiogroup" aria-label="표적 크기">
+        <input type="radio" name="size" id="s-s" value="s"><label for="s-s">작게</label>
+        <input type="radio" name="size" id="s-m" value="m"><label for="s-m">보통</label>
+        <input type="radio" name="size" id="s-l" value="l"><label for="s-l">크게</label>
+      </div>
+    </div>
+    <div class="group">
+      <span class="label">시간</span>
+      <div class="seg" role="radiogroup" aria-label="시간">
+        <input type="radio" name="dur" id="d-30" value="30"><label for="d-30">30초</label>
+        <input type="radio" name="dur" id="d-60" value="60"><label for="d-60">60초</label>
+      </div>
+    </div>
+    <label class="switch"><input type="checkbox" id="lock"> 게임 감도 모드</label>
+    <label class="switch"><input type="checkbox" id="sound"> 효과음</label>
+  </section>
+
+  <div class="range">
+    <canvas id="range" aria-label="사격장"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">플릭 연습</h2>
+      <p id="ov-text"></p>
+      <p class="note" id="ov-note" hidden></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+        <button class="btn big" id="start" type="button">시작하기</button>
+        <button class="btn big" id="see" type="button" hidden style="background:#e8f0ec">결과 보기 ↓</button>
+      </div>
+      <p id="ov-esc">연습 중 <b>Esc</b>를 누르면 바로 끝나요.</p>
+    </div>
+  </div>
+
+  <section class="results" aria-label="결과">
+    <div class="card verdict" id="verdict">
+      <div class="vrow">
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+          <div><span class="pill" id="v-tag">예시 결과</span></div>
+          <p class="vhead" id="v-head"></p>
+        </div>
+        <div class="rec" id="v-rec"></div>
+      </div>
+      <p id="v-body"></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="apply" type="button">추천 감도로 다시 해보기</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>이번 판 기록</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="card">
+      <h2 id="sc-title">첫 움직임이 멈춘 곳</h2>
+      <canvas id="scatter" aria-label="첫 움직임 분포도"></canvas>
+      <div class="legend" id="sc-legend">
+        <span><i style="background:var(--under)"></i>모자람 (언더슛)</span>
+        <span><i style="background:var(--good)"></i>표적 안</span>
+        <span><i style="background:var(--over)"></i>지나침 (오버슛)</span>
+      </div>
+      <p class="hint" id="sc-hint">점 하나가 표적 하나예요. 마우스를 휙 움직이고 처음 멈춘 지점을 이동 방향 기준으로 겹쳐 그렸어요.</p>
+    </div>
+  </section>
+
+  <section class="card" aria-label="감도 계산기">
+    <h2>내 게임 감도</h2>
+    <p class="hint">게임 감도 모드는 아래 값으로 마우스 이동 거리를 게임과 똑같이 맞춰요. 사격장 가로 폭이 게임 화면의 시야각(FOV)이 됩니다.</p>
+    <div class="calc-grid">
+      <label class="field">게임
+        <select id="game">
+          <option value="valorant">발로란트</option>
+          <option value="cs2">카운터 스트라이크 2</option>
+          <option value="ow2">오버워치 2</option>
+          <option value="apex">에이펙스 레전드</option>
+          <option value="custom">직접 입력</option>
+        </select>
+      </label>
+      <label class="field">마우스 DPI<input id="dpi" type="number" min="100" max="32000" step="50" inputmode="numeric"></label>
+      <label class="field">게임 감도<input id="sens" type="number" min="0.001" max="100" step="0.001" inputmode="decimal"></label>
+      <label class="field">가로 FOV (도)<input id="fov" type="number" min="60" max="150" step="0.1" inputmode="decimal"></label>
+      <label class="field">yaw (감도 계수)<input id="yaw" type="number" min="0.0001" max="2" step="0.0001" inputmode="decimal"></label>
+    </div>
+    <div class="outs">
+      <div class="out"><b id="o-edpi">–</b><span>eDPI (DPI × 감도)</span></div>
+      <div class="out"><b id="o-cm">–</b><span>한 바퀴(360°) 도는 데 필요한 마우스 거리</span></div>
+      <div class="out"><b id="o-rec">–</b><span id="o-rec-l">추천 감도 (마지막 결과 기준)</span></div>
+    </div>
+  </section>
+
+  <section class="card" aria-label="기록">
+    <h2>최근 기록</h2>
+    <div class="table-wrap" id="history"></div>
+    <details>
+      <summary>어떻게 판단하나요?</summary>
+      <ul>
+        <li>표적이 나오면 보통 마우스를 크게 한 번 휙 움직이고(첫 움직임), 조금 고친 다음 클릭해요.</li>
+        <li>첫 움직임이 표적을 자주 지나치면 감도가 높은 것이고, 자주 못 미치면 감도가 낮은 거예요.</li>
+        <li>추천 감도 = 지금 감도 ÷ (첫 움직임 거리 ÷ 표적까지 거리). 여러 판 해서 값이 비슷하게 나오면 믿을 만해요.</li>
+        <li>정확하게 재려면 <b>게임 감도 모드</b>를 켜고, 윈도우의 <b>포인터 정확도 향상</b>은 꺼 주세요.</li>
+        <li>트래킹과 포인트 따라가기는 표적보다 앞서가는지 뒤처지는지로 판단해요.</li>
+        <li>포인트 클릭은 작은 점을 맞히는 정밀 연습이에요. 점 가운데에서 몇 픽셀 벗어났는지도 알려줘요.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const GAMES = {
+  valorant: { name: '발로란트', yaw: 0.07, fov: 103, dec: 3 },
+  cs2: { name: 'CS2', yaw: 0.022, fov: 106.26, dec: 2 },
+  ow2: { name: '오버워치 2', yaw: 0.0066, fov: 103, dec: 2 },
+  apex: { name: '에이펙스', yaw: 0.022, fov: 110, dec: 2 },
+  custom: { name: '직접 입력', yaw: 0.022, fov: 103, dec: 3 }
+};
+const MODES = {
+  flick: { name: '플릭', title: '플릭 연습', text: '표적이 하나씩 나타나요. 최대한 빠르고 정확하게 클릭하세요. 감도 판단에 가장 좋은 모드예요.' },
+  grid: { name: '그리드', title: '그리드 연습', text: '표적 3개가 동시에 떠 있어요. 맞히면 다른 자리에 새로 생겨요. 연속 플릭 감각을 봐요.' },
+  track: { name: '트래킹', title: '트래킹 연습', text: '움직이는 표적 위에 조준점을 계속 올려 두세요. 클릭은 필요 없어요.' },
+  point: { name: '포인트 클릭', title: '포인트 클릭 연습', text: '아주 작은 점이 하나씩 나타나요. 점 한가운데를 정확히 클릭하세요. 가운데에 가까울수록 점수가 높아요.' },
+  follow: { name: '포인트 따라가기', title: '포인트 따라가기 연습', text: '작은 점이 곡선 길을 따라 움직여요. 앞으로 갈 길이 흐리게 보여요. 마우스 포인터를 점에 붙여서 계속 따라가세요. 점점 빨라져요.' }
+};
+const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+const cfg = Object.assign({ mode: 'flick', size: 'm', dur: 30, lock: !coarse, sound: true, game: 'valorant', dpi: 800, sens: 0.35, fov: 103, yaw: 0.07 }, store.get('aim.cfg', {}));
+if (coarse) cfg.lock = false;
+const saveCfg = () => store.set('aim.cfg', cfg);
+
+/* ---------- controls ---------- */
+['mode', 'size', 'dur'].forEach(name => {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(el => {
+    el.checked = String(cfg[name]) === el.value;
+    el.addEventListener('change', () => {
+      cfg[name] = name === 'dur' ? Number(el.value) : el.value;
+      saveCfg(); updateOverlay();
+    });
+  });
+});
+const lockEl = $('#lock'), soundEl = $('#sound');
+lockEl.checked = cfg.lock; soundEl.checked = cfg.sound;
+if (coarse) { lockEl.disabled = true; lockEl.parentElement.title = '터치 화면에서는 쓸 수 없어요'; }
+lockEl.addEventListener('change', () => { cfg.lock = lockEl.checked; saveCfg(); updateOverlay(); });
+soundEl.addEventListener('change', () => { cfg.sound = soundEl.checked; saveCfg(); });
+
+/* ---------- calculator ---------- */
+const gameEl = $('#game'), dpiEl = $('#dpi'), sensEl = $('#sens'), fovEl = $('#fov'), yawEl = $('#yaw');
+function fillCalc() {
+  gameEl.value = cfg.game; dpiEl.value = cfg.dpi; sensEl.value = cfg.sens; fovEl.value = cfg.fov; yawEl.value = cfg.yaw;
+  yawEl.disabled = cfg.game !== 'custom';
+}
+gameEl.addEventListener('change', () => {
+  cfg.game = gameEl.value; const g = GAMES[cfg.game];
+  cfg.yaw = g.yaw; cfg.fov = g.fov; fillCalc(); saveCfg(); updateCalc();
+});
+[[dpiEl, 'dpi'], [sensEl, 'sens'], [fovEl, 'fov'], [yawEl, 'yaw']].forEach(([el, k]) => {
+  el.addEventListener('input', () => { const v = parseFloat(el.value); if (v > 0) { cfg[k] = v; saveCfg(); updateCalc(); } });
+});
+const cm360 = sens => 360 / (sens * cfg.yaw * cfg.dpi) * 2.54;
+const fmtSens = v => { const d = GAMES[cfg.game].dec; return Number(v.toFixed(d)).toString(); };
+let lastVerdict = null;
+function updateCalc() {
+  $('#o-edpi').textContent = Math.round(cfg.dpi * cfg.sens).toLocaleString('ko-KR');
+  $('#o-cm').textContent = cm360(cfg.sens).toFixed(1) + ' cm';
+  if (lastVerdict && lastVerdict.recSens) {
+    const ns = lastVerdict.recSens;
+    $('#o-rec').textContent = fmtSens(ns);
+    $('#o-rec-l').textContent = `추천 감도 · 한 바퀴 ${cm360(ns).toFixed(1)} cm`;
+  } else {
+    $('#o-rec').textContent = lastVerdict && lastVerdict.cls === 'good' ? fmtSens(cfg.sens) : '–';
+    $('#o-rec-l').textContent = '추천 감도 (마지막 결과 기준)';
+  }
+}
+
+/* ---------- canvas ---------- */
+const cv = $('#range'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+let S = { running: false, cursor: null, targets: [], effects: [] };
+const RANGE = { bg: '#16201d', grid: 'rgba(255,255,255,0.045)', target: '#ff8a3d', ring: '#fff3e8', core: '#c9481a', hud: '#e8f0ec', dim: '#8fa59d', hit: '#7ef0c2', miss: '#ff6d6d', track: '#ffb340' };
+
+function fit() {
+  const w = cv.parentElement.clientWidth;
+  const h = Math.round(Math.min(w * 9 / 16, Math.max(260, innerHeight * 0.68)));
+  const sx = W ? w / W : 1, sy = H ? h / H : 1;
+  W = w; H = h;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (S.running) {
+    S.cursor.x *= sx; S.cursor.y *= sy;
+    S.targets.forEach(t => { t.x *= sx; t.y *= sy; t.r = S.mode === 'track' ? baseR() * 1.35 : (S.mode === 'point' || S.mode === 'follow') ? pointR() : baseR(); });
+  } else S.cursor = { x: W / 2, y: H / 2 };
+}
+const baseR = () => Math.max(8, H * { s: 0.028, m: 0.042, l: 0.06 }[cfg.size]);
+const rand = (a, b) => a + Math.random() * (b - a);
+const FLICKY = m => m === 'flick' || m === 'point';
+const TRACKY = m => m === 'track' || m === 'follow';
+const pointR = () => Math.max(4, H * { s: 0.009, m: 0.013, l: 0.019 }[cfg.size]);
+const isLocked = () => document.pointerLockElement === cv;
+
+/* ---------- sound ---------- */
+let ac = null;
+function beep(freq, len, vol) {
+  if (!cfg.sound || !ac) return;
+  try {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + len);
+    o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + len);
+  } catch (e) {}
+}
+
+/* ---------- spawning ---------- */
+const TOP = 34; // HUD 높이
+function spawnFlick() {
+  const r = S.mode === 'point' ? pointR() : baseR(), c = S.cursor; let best = null;
+  for (let i = 0; i < 60; i++) {
+    const x = rand(r + 10, W - r - 10), y = rand(TOP + r + 6, H - r - 10);
+    const d = Math.hypot(x - c.x, y - c.y);
+    if (d >= H * 0.3 && d <= Math.max(W, H) * 0.75) { best = { x, y }; break; }
+    if (!best || d > Math.hypot(best.x - c.x, best.y - c.y)) best = { x, y };
+  }
+  S.targets.push({ x: best.x, y: best.y, r, born: performance.now(), first: true });
+}
+function spawnGrid() {
+  const r = baseR(), cols = 5, rows = 4;
+  const gx0 = W * 0.18, gx1 = W * 0.82, gy0 = TOP + H * 0.12, gy1 = H * 0.86;
+  const free = [];
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+    const x = gx0 + (gx1 - gx0) * i / (cols - 1), y = gy0 + (gy1 - gy0) * j / (rows - 1);
+    if (S.targets.some(t => Math.hypot(t.x - x, t.y - y) < 1)) continue;
+    if (Math.hypot(S.cursor.x - x, S.cursor.y - y) < r * 3) continue;
+    free.push({ x, y });
+  }
+  const p = free[Math.floor(Math.random() * free.length)];
+  if (p) S.targets.push({ x: p.x, y: p.y, r, born: performance.now(), first: true });
+}
+function spawnFollow() {
+  const ph = () => Math.random() * Math.PI * 2;
+  S.path = { a: [ph(), ph(), ph(), ph()], f: [rand(0.55, 0.75), rand(1.1, 1.5), rand(0.45, 0.65), rand(0.9, 1.3)], u: 0 };
+  const p0 = pathAt(0);
+  S.targets.push({ x: p0.x, y: p0.y, r: pointR(), vx: 0, vy: 0 });
+  S.cursor = { x: p0.x, y: p0.y };
+}
+function pathAt(u) {
+  const P = S.path, mx = W * 0.42, my = (H - TOP) * 0.40, cx = W / 2, cy = (H + TOP) / 2;
+  return {
+    x: cx + mx * (0.65 * Math.sin(u * P.f[0] + P.a[0]) + 0.35 * Math.sin(u * P.f[1] + P.a[1])),
+    y: cy + my * (0.65 * Math.sin(u * P.f[2] + P.a[2]) + 0.35 * Math.sin(u * P.f[3] + P.a[3]))
+  };
+}
+function spawnTrack() {
+  const r = baseR() * 1.35;
+  S.targets.push({ x: W / 2, y: (H + TOP) / 2, r, vx: 0, vy: 0, dvx: 0, dvy: 0, next: 0 });
+}
+
+/* ---------- run lifecycle ---------- */
+function begin(lockOn) {
+  const now = performance.now();
+  S = {
+    running: true, mode: cfg.mode, lock: lockOn, t0: now, dur: cfg.dur * 1000,
+    cursor: { x: W / 2, y: (H + TOP) / 2 }, targets: [], effects: [],
+    hits: 0, misses: 0, recs: [], samples: [], from: null, lastHit: now,
+    track: { inT: 0, total: 0, dist: 0, along: 0, distPx: 0 }, errPx: [],
+    sens: cfg.sens, game: cfg.game
+  };
+  S.from = { ...S.cursor }; S.samples = [{ t: now, x: S.cursor.x, y: S.cursor.y }];
+  if (FLICKY(S.mode)) spawnFlick();
+  else if (S.mode === 'grid') { spawnGrid(); spawnGrid(); spawnGrid(); }
+  else if (S.mode === 'follow') spawnFollow();
+  else spawnTrack();
+  $('#overlay').hidden = true;
+  document.documentElement.classList.add('playing');
+  cv.style.cursor = lockOn ? 'none' : 'crosshair';
+}
+function requestLock() {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const finish = ok => { if (done) return; done = true; document.removeEventListener('pointerlockchange', onChange); document.removeEventListener('pointerlockerror', onErr); ok ? resolve() : reject(); };
+    const onChange = () => { if (isLocked()) finish(true); };
+    const onErr = () => finish(false);
+    document.addEventListener('pointerlockchange', onChange);
+    document.addEventListener('pointerlockerror', onErr);
+    const plain = () => { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(onErr); } catch (e) { onErr(); } };
+    try {
+      const p = cv.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(plain);
+    } catch (e) { plain(); }
+    setTimeout(() => finish(isLocked()), 1500);
+  });
+}
+$('#start').addEventListener('click', () => {
+  try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) {}
+  $('.range').scrollIntoView({ block: 'center' });
+  fit();
+  if (cfg.lock && cv.requestPointerLock) {
+    requestLock().then(() => begin(true)).catch(() => {
+      showNote('마우스 잠금이 막혀서 일반 커서로 진행해요. 추천 감도 숫자는 정확하지 않을 수 있어요.');
+      begin(false);
+    });
+  } else begin(false);
+});
+document.addEventListener('pointerlockchange', () => { if (S.running && S.lock && !isLocked()) endRun(true); });
+document.addEventListener('keydown', e => {
+  if (!S.running) return;
+  if (e.key === 'Escape' && !S.lock) endRun(true);
+  if ([' ', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) e.preventDefault();
+});
+// 연습 중에는 휠·가운데 버튼·터치로 화면이 움직이지 않게 막기
+addEventListener('wheel', e => { if (S.running) e.preventDefault(); }, { passive: false });
+addEventListener('touchmove', e => { if (S.running) e.preventDefault(); }, { passive: false });
+document.addEventListener('mousedown', e => { if (S.running && e.button === 1) e.preventDefault(); });
+$('#see').addEventListener('click', () => $('#verdict').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+
+function endRun(early) {
+  if (!S.running) return;
+  S.running = false;
+  document.documentElement.classList.remove('playing');
+  if (isLocked()) document.exitPointerLock();
+  cv.style.cursor = 'crosshair';
+  const res = summarize(early);
+  if (res) {
+    showResult(res, false);
+    const hist = store.get('aim.hist', []); hist.unshift(res); store.set('aim.hist', hist.slice(0, 15));
+    renderHistory();
+    showNote(null);
+  } else {
+    showNote('기록이 너무 적어서 결과를 내지 않았어요. 끝까지 해보세요.');
+  }
+  $('#start').textContent = '다시 하기';
+  updateOverlay();
+  $('#overlay').hidden = false;
+  $('#see').hidden = !res;
+}
+
+/* ---------- input ---------- */
+function moveTo(x, y, t) {
+  S.cursor.x = Math.min(W, Math.max(0, x)); S.cursor.y = Math.min(H, Math.max(0, y));
+  if (S.running) { S.samples.push({ t, x: S.cursor.x, y: S.cursor.y }); if (S.samples.length > 900) S.samples.splice(0, 300); }
+}
+function pxPerCount() { return cfg.sens * cfg.yaw * W / cfg.fov; }
+cv.addEventListener('pointermove', e => {
+  if (isLocked()) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  const rect = cv.getBoundingClientRect();
+  (evs.length ? evs : [e]).forEach(ev => moveTo(ev.clientX - rect.left, ev.clientY - rect.top, performance.now()));
+});
+document.addEventListener('mousemove', e => {
+  if (!isLocked() || !S.running) return;
+  const k = pxPerCount();
+  moveTo(S.cursor.x + e.movementX * k, S.cursor.y + e.movementY * k, performance.now());
+});
+cv.addEventListener('pointerdown', e => {
+  if (isLocked() || !S.running) return;
+  const rect = cv.getBoundingClientRect();
+  if (e.pointerType !== 'mouse') moveTo(e.clientX - rect.left, e.clientY - rect.top, performance.now());
+  shoot(e.clientX - rect.left, e.clientY - rect.top);
+});
+document.addEventListener('mousedown', e => {
+  if (!isLocked() || !S.running || e.button !== 0) return;
+  shoot(S.cursor.x, S.cursor.y);
+});
+
+function shoot(x, y) {
+  if (TRACKY(S.mode)) return;
+  const now = performance.now();
+  let hi = -1, hd = Infinity;
+  S.targets.forEach((t, i) => { const d = Math.hypot(t.x - x, t.y - y); if (d <= t.r && d < hd) { hi = i; hd = d; } });
+  if (hi < 0) {
+    S.misses++; S.targets.forEach(t => { t.first = false; });
+    S.effects.push({ kind: 'miss', x, y, t: now }); beep(180, 0.08, 0.05);
+    return;
+  }
+  const t = S.targets[hi];
+  const rec = analyze(S.from, t, S.samples, { x, y });
+  rec.time = now - (FLICKY(S.mode) ? t.born : S.lastHit);
+  rec.first = t.first; rec.err = hd / t.r; S.errPx.push(hd);
+  S.recs.push(rec); S.hits++; S.lastHit = now;
+  S.effects.push({ kind: 'hit', x: t.x, y: t.y, r: S.mode === 'point' ? t.r * 2.5 : t.r, t: now }); beep(880, 0.06, 0.06);
+  S.targets.splice(hi, 1);
+  S.from = { x, y }; S.samples = [{ t: now, x, y }];
+  if (FLICKY(S.mode)) spawnFlick(); else spawnGrid();
+}
+
+/* 첫 움직임(가장 빠른 구간 뒤 처음 멈춘 지점) 찾기 */
+function analyze(from, t, smp, click) {
+  const dx = t.x - from.x, dy = t.y - from.y, dist = Math.hypot(dx, dy);
+  const out = { dist, ratio: null, ex: 0, ey: 0 };
+  if (dist < Math.max(t.r * 2.5, 40) || smp.length < 5) return out;
+  const ux = dx / dist, uy = dy / dist;
+  const v = [0];
+  for (let i = 1; i < smp.length; i++) v.push(Math.hypot(smp[i].x - smp[i - 1].x, smp[i].y - smp[i - 1].y) / Math.max(smp[i].t - smp[i - 1].t, 1));
+  const vs = v.map((_, i) => (v[Math.max(0, i - 1)] + v[i] + v[Math.min(v.length - 1, i + 1)]) / 3);
+  let pk = 0;
+  for (let i = 1; i < vs.length; i++) if (vs[i] > vs[pk]) pk = i;
+  if (vs[pk] <= 0) return out;
+  let ep = null;
+  for (let i = pk + 1; i < smp.length; i++) {
+    if (vs[i] < vs[pk] * 0.15 || smp[i].t - smp[i - 1].t > 45) { ep = smp[i - 1]; break; }
+  }
+  if (!ep) ep = click;
+  const px = ep.x - from.x, py = ep.y - from.y;
+  const proj = px * ux + py * uy, perp = -px * uy + py * ux;
+  if (proj < dist * 0.4) return out;
+  out.ratio = proj / dist; out.ex = (proj - dist) / t.r; out.ey = perp / t.r;
+  return out;
+}
+
+/* ---------- per frame ---------- */
+let prev = performance.now();
+function tick(now) {
+  const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+  if (S.running) {
+    if (now - S.t0 >= S.dur) endRun(false);
+    else if (S.mode === 'track') stepTrack(now, dt);
+    else if (S.mode === 'follow') stepFollow(now, dt);
+  }
+  draw(now);
+  requestAnimationFrame(tick);
+}
+function stepTrack(now, dt) {
+  const t = S.targets[0]; if (!t) return;
+  if (now >= t.next) {
+    const a = Math.random() * Math.PI * 2, sp = H * rand(0.22, 0.55);
+    t.dvx = Math.cos(a) * sp; t.dvy = Math.sin(a) * sp; t.next = now + rand(450, 1300);
+  }
+  const k = Math.min(1, dt * 4);
+  t.vx += (t.dvx - t.vx) * k; t.vy += (t.dvy - t.vy) * k;
+  t.x += t.vx * dt; t.y += t.vy * dt;
+  if (t.x < t.r + 6) { t.x = t.r + 6; t.vx = Math.abs(t.vx); t.dvx = Math.abs(t.dvx); }
+  if (t.x > W - t.r - 6) { t.x = W - t.r - 6; t.vx = -Math.abs(t.vx); t.dvx = -Math.abs(t.dvx); }
+  if (t.y < TOP + t.r + 6) { t.y = TOP + t.r + 6; t.vy = Math.abs(t.vy); t.dvy = Math.abs(t.dvy); }
+  if (t.y > H - t.r - 6) { t.y = H - t.r - 6; t.vy = -Math.abs(t.vy); t.dvy = -Math.abs(t.dvy); }
+  trackStats(t, dt, t.r);
+}
+function trackStats(t, dt, tol) {
+  const c = S.cursor, d = Math.hypot(c.x - t.x, c.y - t.y);
+  S.track.total += dt; S.track.dist += d / t.r * dt; S.track.distPx += d * dt;
+  t.on = d <= tol; if (t.on) S.track.inT += dt;
+  const sp = Math.hypot(t.vx, t.vy);
+  if (sp > 1) S.track.along += ((c.x - t.x) * t.vx + (c.y - t.y) * t.vy) / sp / t.r * dt;
+}
+function stepFollow(now, dt) {
+  const t = S.targets[0]; if (!t) return;
+  const prog = Math.min(1, (now - S.t0) / S.dur);
+  S.path.u += dt * (0.55 + 0.9 * prog); // 점점 빨라짐
+  const p = pathAt(S.path.u);
+  t.vx = (p.x - t.x) / Math.max(dt, 0.001); t.vy = (p.y - t.y) / Math.max(dt, 0.001);
+  t.x = p.x; t.y = p.y;
+  trackStats(t, dt, t.r * 2.5);
+}
+function draw(now) {
+  if (!W) return;
+  ctx.fillStyle = RANGE.bg; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = RANGE.grid; ctx.lineWidth = 1;
+  const step = H / 8;
+  ctx.beginPath();
+  for (let x = (W / 2) % step; x < W; x += step) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); }
+  for (let y = (H / 2) % step; y < H; y += step) { ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); }
+  ctx.stroke();
+
+  const targets = S.running ? S.targets : [{ x: W / 2, y: H / 2, r: baseR() }];
+  targets.forEach(t => {
+    if (S.running && S.mode === 'follow') {
+      ctx.strokeStyle = 'rgba(255,179,64,0.28)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      for (let k = 0; k <= 40; k++) { const q = pathAt(S.path.u + k * 0.03); k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+      ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = t.on ? RANGE.hit : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r * 2.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = t.on ? RANGE.hit : RANGE.track;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (S.running && S.mode === 'point') {
+      const r = t.r * Math.min(1, 0.4 + (now - t.born) / 120);
+      ctx.strokeStyle = 'rgba(255,138,61,0.45)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(t.x, t.y, r * 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = RANGE.target; ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = RANGE.ring; ctx.beginPath(); ctx.arc(t.x, t.y, Math.max(1.2, r * 0.3), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (S.running && S.mode === 'track') {
+      ctx.fillStyle = t.on ? RANGE.hit : RANGE.track;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = RANGE.bg; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r * 0.55, 0, Math.PI * 2); ctx.stroke();
+      return;
+    }
+    let s = 1;
+    if (t.born) s = Math.min(1, (now - t.born) / 90);
+    const r = t.r * (0.6 + 0.4 * s);
+    ctx.fillStyle = RANGE.target; ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = RANGE.ring; ctx.lineWidth = Math.max(1.5, r * 0.12);
+    ctx.beginPath(); ctx.arc(t.x, t.y, r * 0.58, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = RANGE.core; ctx.beginPath(); ctx.arc(t.x, t.y, Math.max(2, r * 0.16), 0, Math.PI * 2); ctx.fill();
+  });
+
+  S.effects = S.effects.filter(f => now - f.t < 320);
+  S.effects.forEach(f => {
+    const p = (now - f.t) / 320;
+    ctx.globalAlpha = 1 - p;
+    if (f.kind === 'hit') {
+      ctx.strokeStyle = RANGE.hit; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 + p * 0.9), 0, Math.PI * 2); ctx.stroke();
+    } else {
+      ctx.strokeStyle = RANGE.miss; ctx.lineWidth = 2; const k = 6;
+      ctx.beginPath(); ctx.moveTo(f.x - k, f.y - k); ctx.lineTo(f.x + k, f.y + k); ctx.moveTo(f.x + k, f.y - k); ctx.lineTo(f.x - k, f.y + k); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  });
+
+  if (S.running) {
+    if (S.lock) {
+      const { x, y } = S.cursor;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x - 3, y); ctx.moveTo(x + 3, y); ctx.lineTo(x + 9, y);
+      ctx.moveTo(x, y - 9); ctx.lineTo(x, y - 3); ctx.moveTo(x, y + 3); ctx.lineTo(x, y + 9); ctx.stroke();
+    }
+    const left = Math.max(0, (S.dur - (now - S.t0)) / 1000);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(0, 0, W, TOP);
+    ctx.font = '600 15px "Chakra Petch", "IBM Plex Sans KR", sans-serif'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = RANGE.hud; ctx.textAlign = 'left';
+    ctx.fillText(`${left.toFixed(1)}초`, 12, TOP / 2);
+    ctx.textAlign = 'right';
+    let right;
+    if (TRACKY(S.mode)) right = `조준 유지 ${S.track.total ? Math.round(S.track.inT / S.track.total * 100) : 0}%`;
+    else { const n = S.hits + S.misses; right = `명중 ${S.hits}  ·  정확도 ${n ? Math.round(S.hits / n * 100) : 100}%`; }
+    if (S.mode === 'point' && S.errPx.length) right = `평균 오차 ${(S.errPx.reduce((a, b) => a + b, 0) / S.errPx.length).toFixed(1)}px  ·  ` + right;
+    ctx.fillText(right, W - 12, TOP / 2);
+    ctx.fillStyle = RANGE.target;
+    ctx.fillRect(0, TOP - 2, W * left / (S.dur / 1000), 2);
+  }
+}
+
+/* ---------- results ---------- */
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const quant = (a, q) => { const s = [...a].sort((x, y) => x - y); const i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+function summarize(early) {
+  const base = { mode: S.mode, date: Date.now(), lock: S.lock, sens: S.sens, game: S.game, size: cfg.size };
+  if (TRACKY(S.mode)) {
+    const T = S.track.total;
+    if (T < 5) return null;
+    return Object.assign(base, { onPct: S.track.inT / T, meanDist: S.track.dist / T, meanPx: S.track.distPx / T, lead: S.track.along / T });
+  }
+  if (S.hits < (early ? 8 : 5)) return null;
+  const valid = S.recs.filter(r => r.ratio !== null);
+  const ratios = valid.map(r => r.ratio);
+  return Object.assign(base, {
+    hits: S.hits, misses: S.misses, acc: S.hits / (S.hits + S.misses),
+    perTarget: S.recs.reduce((s, r) => s + r.time, 0) / S.recs.length,
+    firstTry: S.recs.filter(r => r.first).length / S.recs.length,
+    n: ratios.length,
+    errPx: S.errPx.length ? S.errPx.reduce((a, b) => a + b, 0) / S.errPx.length : null,
+    med: ratios.length ? median(ratios) : null,
+    iqr: ratios.length >= 4 ? quant(ratios, 0.75) - quant(ratios, 0.25) : null,
+    pts: valid.map(r => [Math.round(r.ex * 100) / 100, Math.round(r.ey * 100) / 100])
+  });
+}
+function verdictOf(res) {
+  const gname = GAMES[res.game] ? GAMES[res.game].name : '';
+  if (TRACKY(res.mode)) {
+    const lead = res.mode === 'follow' ? res.lead / 2.5 : res.lead;
+    if (res.onPct < 0.15) return { cls: 'na', head: '표적을 거의 못 따라갔어요', body: '표적을 크게 하거나 감도를 조금 낮춰서 먼저 따라가는 감각을 잡아보세요.', factor: null };
+    if (lead > 0.25) return { cls: 'over', head: '조준점이 표적보다 앞서가요', body: `움직이는 방향으로 평균 표적 반지름의 ${Math.round(lead * 100)}%만큼 앞서 있었어요. 감도를 5% 정도 낮춰보세요.`, factor: 0.95 };
+    if (lead < -0.25) return { cls: 'under', head: '조준점이 표적보다 뒤처져요', body: `움직이는 방향 뒤쪽으로 평균 표적 반지름의 ${Math.round(-lead * 100)}%만큼 늦었어요. 감도를 5% 정도 올려보세요.`, factor: 1.05 };
+    return { cls: 'good', head: '트래킹 감도가 잘 맞아요', body: '앞서거나 뒤처지는 쪽으로 크게 치우치지 않았어요. 지금 감도를 유지해도 좋아요.', factor: null };
+  }
+  if (res.med === null || res.n < 6) return { cls: 'na', head: '감도를 판단할 기록이 부족해요', body: '마우스로 표적까지 한 번에 크게 움직이는 장면이 더 필요해요. 플릭 모드로 30초 이상 해보세요.', factor: null };
+  const m = res.med, pct = Math.round(Math.abs(1 / m - 1) * 100);
+  const shaky = res.iqr !== null && res.iqr > 0.3;
+  const shakyTxt = shaky ? ' 다만 움직임 편차가 커서, 감도를 바꾸기 전에 몇 판 더 해서 결과가 같은지 확인해보세요.' : '';
+  const where = res.lock ? `${gname} 감도` : '마우스 감도';
+  if (Math.abs(m - 1) < 0.04) return { cls: 'good', head: '감도가 잘 맞아요', body: `첫 움직임이 표적까지 거리의 평균 ${Math.round(m * 100)}% 지점에서 멈췄어요. 지금 ${where}를 유지하세요.${shakyTxt}`, factor: null };
+  if (m > 1) return { cls: 'over', head: `표적을 지나쳐요 · 감도를 ${pct}% 낮춰보세요`, body: `첫 움직임이 표적까지 거리의 ${Math.round(m * 100)}%를 가서 멈췄어요. 손이 너무 많이 가니 ${where}를 낮추면 한 번에 멈추기 쉬워져요.${shakyTxt}`, factor: 1 / m };
+  return { cls: 'under', head: `표적에 못 미쳐요 · 감도를 ${pct}% 올려보세요`, body: `첫 움직임이 표적까지 거리의 ${Math.round(m * 100)}%에서 멈추고 한 번 더 움직였어요. ${where}를 올리면 보정 횟수가 줄어요.${shakyTxt}`, factor: 1 / m };
+}
+function showResult(res, sample) {
+  const v = verdictOf(res);
+  lastVerdict = sample ? null : Object.assign({}, v, { recSens: v.factor && res.lock ? res.sens * v.factor : null });
+  const card = $('#verdict');
+  card.className = 'card verdict ' + v.cls;
+  const tag = $('#v-tag');
+  tag.textContent = sample ? '예시 결과 · 한 판 하면 내 결과로 바뀌어요' : `${MODES[res.mode].name} · 방금 결과`;
+  tag.className = 'pill' + (sample ? ' sample' : '');
+  $('#v-head').textContent = v.head;
+  $('#v-body').textContent = v.body;
+  const rec = $('#v-rec');
+  if (v.factor && res.lock) {
+    rec.innerHTML = `<span class="from">${fmtSens(res.sens)} →</span><span class="to">${fmtSens(res.sens * v.factor)}</span>`;
+  } else if (v.factor) {
+    rec.innerHTML = `<span class="to">${v.factor > 1 ? '+' : '−'}${Math.round(Math.abs(v.factor - 1) * 100)}%</span>`;
+  } else rec.innerHTML = '';
+  $('#apply').hidden = sample || !v.factor || !res.lock;
+  $('#apply').onclick = () => {
+    cfg.sens = Number(fmtSens(res.sens * v.factor)); fillCalc(); saveCfg(); updateCalc();
+    toast(`감도를 ${fmtSens(cfg.sens)}(으)로 바꿨어요. 시작하기를 눌러 다시 재보세요.`);
+    $('.range').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const st = $('#stats');
+  const tile = (b, s) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`;
+  if (res.mode === 'follow') {
+    st.innerHTML = tile(Math.round(res.onPct * 100) + '%', '점을 붙잡고 있던 시간') + tile(res.meanPx.toFixed(1) + '<small style="font-size:14px"> px</small>', '점과의 평균 거리') +
+      tile((res.lead > 0 ? '+' : '') + res.lead.toFixed(2), '앞섬(+) / 뒤처짐(−)') + tile(fmtSens(res.sens), res.lock ? '측정한 게임 감도' : '일반 커서로 측정');
+  } else if (res.mode === 'point') {
+    st.innerHTML = tile(res.hits, '명중') + tile(Math.round(res.acc * 100) + '%', '정확도') +
+      tile((res.errPx ?? 0).toFixed(1) + '<small style="font-size:14px"> px</small>', '점 가운데에서 평균 오차') + tile(Math.round(res.perTarget) + '<small style="font-size:14px"> ms</small>', '점당 걸린 시간');
+  } else if (res.mode === 'track') {
+    st.innerHTML = tile(Math.round(res.onPct * 100) + '%', '표적 위에 있던 시간') + tile(res.meanDist.toFixed(2), '평균 거리 (표적 반지름 = 1)') +
+      tile((res.lead > 0 ? '+' : '') + res.lead.toFixed(2), '앞섬(+) / 뒤처짐(−)') + tile(fmtSens(res.sens), res.lock ? '측정한 게임 감도' : '일반 커서로 측정');
+  } else {
+    st.innerHTML = tile(res.hits, '명중') + tile(Math.round(res.acc * 100) + '%', '정확도') +
+      tile(Math.round(res.perTarget) + '<small style="font-size:14px"> ms</small>', '표적당 걸린 시간') + tile(Math.round(res.firstTry * 100) + '%', '첫 발에 맞힌 비율');
+  }
+  drawScatter(res);
+  updateCalc();
+}
+function tokens() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = n => cs.getPropertyValue(n).trim();
+  return { ink: g('--ink'), muted: g('--muted'), line: g('--line'), over: g('--over'), under: g('--under'), good: g('--good'), chip: g('--chip') };
+}
+let lastShown = null;
+function drawScatter(res) {
+  lastShown = res;
+  const c = $('#scatter'), w = c.clientWidth || 360, h = w * 3 / 4, dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const T = tokens();
+  g.clearRect(0, 0, w, h);
+  const isTrack = TRACKY(res.mode);
+  $('#sc-title').textContent = isTrack ? '앞섬 · 뒤처짐' : '첫 움직임이 멈춘 곳';
+  $('#sc-legend').hidden = isTrack;
+  $('#sc-hint').textContent = isTrack
+    ? '막대가 오른쪽(빨강)이면 표적보다 앞서간 것이고, 왼쪽(파랑)이면 뒤처진 거예요. 가운데에 가까울수록 좋아요.'
+    : '점 하나가 표적 하나예요. 마우스를 휙 움직이고 처음 멈춘 지점을 이동 방향(→) 기준으로 겹쳐 그렸어요.';
+  const cx = w / 2, cy = h / 2, unit = Math.min(w / 9, h / 7);
+  g.font = '12px "IBM Plex Sans KR", sans-serif'; g.textBaseline = 'middle';
+  if (isTrack) {
+    const lim = 1.5, scale = (w / 2 - 30) / lim, v = Math.max(-lim, Math.min(lim, res.mode === "follow" ? res.lead / 2.5 : res.lead));
+    g.strokeStyle = T.line; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(30, cy); g.lineTo(w - 30, cy); g.stroke();
+    g.fillStyle = v >= 0 ? T.over : T.under;
+    g.fillRect(Math.min(cx, cx + v * scale), cy - 16, Math.abs(v * scale), 32);
+    g.strokeStyle = T.ink; g.beginPath(); g.moveTo(cx, cy - 28); g.lineTo(cx, cy + 28); g.stroke();
+    g.fillStyle = T.muted; g.textAlign = 'center';
+    g.fillText('뒤처짐', 46, cy + 44); g.fillText('앞섬', w - 40, cy + 44); g.fillText('0', cx, cy + 44);
+    return;
+  }
+  // 거리 눈금 (표적 반지름 단위)
+  g.strokeStyle = T.line; g.lineWidth = 1;
+  for (let k = -4; k <= 4; k++) { const x = cx + k * unit; g.beginPath(); g.moveTo(x + .5, 14); g.lineTo(x + .5, h - 24); g.stroke(); }
+  g.fillStyle = T.chip; g.beginPath(); g.arc(cx, cy, unit, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = T.muted; g.lineWidth = 1.5; g.beginPath(); g.arc(cx, cy, unit, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = T.muted; g.textAlign = 'center';
+  [-4, -2, 0, 2, 4].forEach(k => g.fillText(k === 0 ? '표적' : (k > 0 ? '+' : '−') + Math.abs(k), cx + k * unit, h - 10));
+  g.textAlign = 'left'; g.fillText('이동 방향 →', 8, 10);
+  g.textAlign = 'right'; g.fillText('단위: 표적 반지름', w - 8, 10);
+  (res.pts || []).forEach(([ex, ey]) => {
+    const x = cx + Math.max(-4.4, Math.min(4.4, ex)) * unit, y = cy + Math.max(-3.2, Math.min(3.2, ey)) * unit;
+    const inside = Math.hypot(ex, ey) <= 1;
+    g.fillStyle = inside ? T.good : (ex > 0 ? T.over : T.under);
+    g.globalAlpha = 0.8; g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+  });
+  if (res.med !== null && res.pts && res.pts.length) {
+    const mx = median(res.pts.map(p => p[0]));
+    const x = cx + Math.max(-4.4, Math.min(4.4, mx)) * unit;
+    g.strokeStyle = T.ink; g.setLineDash([4, 4]); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, 18); g.lineTo(x, h - 26); g.stroke(); g.setLineDash([]);
+  }
+}
+
+/* ---------- history ---------- */
+function renderHistory() {
+  const hist = store.get('aim.hist', []);
+  const box = $('#history');
+  if (!hist.length) { box.innerHTML = '<p class="empty">아직 기록이 없어요. 한 판 하면 여기에 쌓여요.</p>'; return; }
+  const rows = hist.map(r => {
+    const v = verdictOf(r);
+    const d = new Date(r.date);
+    const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const score = TRACKY(r.mode) ? `유지 ${Math.round(r.onPct * 100)}%` : r.mode === 'point' && r.errPx != null ? `${r.hits}개 · 오차 ${r.errPx.toFixed(1)}px` : `${r.hits}개 · ${Math.round(r.acc * 100)}%`;
+    const cls = { over: 'b-over', under: 'b-under', good: 'b-good' }[v.cls] || '';
+    const verdict = { over: '높음', under: '낮음', good: '적당', na: '판단 보류' }[v.cls];
+    const sens = r.lock ? `${(GAMES[r.game] || GAMES.custom).name} ${r.sens}` : '일반 커서';
+    return `<tr><td class="num">${when}</td><td>${MODES[r.mode].name}</td><td class="num">${score}</td><td>${sens}</td><td class="${cls}"><b>${verdict}</b></td></tr>`;
+  }).join('');
+  box.innerHTML = `<table><thead><tr><th>날짜</th><th>모드</th><th>점수</th><th>감도</th><th>감도 판단</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- overlay / toast ---------- */
+function updateOverlay() {
+  const m = MODES[cfg.mode];
+  $('#ov-title').textContent = m.title;
+  let txt = m.text;
+  if (cfg.lock) txt += ` 게임 감도 모드: ${(GAMES[cfg.game]).name} 감도 ${cfg.sens} · ${cfg.dpi} DPI로 움직여요.`;
+  $('#ov-text').textContent = txt;
+}
+function showNote(t) { const n = $('#ov-note'); n.hidden = !t; if (t) n.textContent = t; }
+let toastTimer = 0;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3200); }
+
+/* ---------- sample result (before first run) ---------- */
+function sampleResult() {
+  let s = 7; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const gauss = () => (r() + r() + r() + r() - 2) * 1.2;
+  const pts = Array.from({ length: 28 }, () => [Math.round((0.75 + gauss() * 0.75) * 100) / 100, Math.round(gauss() * 0.55 * 100) / 100]);
+  return { mode: 'flick', date: Date.now(), lock: true, sens: 0.35, game: 'valorant', hits: 41, misses: 6, acc: 41 / 47, perTarget: 712, firstTry: 0.83, n: 28, med: 1.08, iqr: 0.16, pts };
+}
+
+/* ---------- boot ---------- */
+fillCalc(); updateCalc(); updateOverlay(); renderHistory();
+fit();
+const hist = store.get('aim.hist', []);
+showResult(hist[0] || sampleResult(), !hist[0]);
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { fit(); if (lastShown) drawScatter(lastShown); }, 120); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (lastShown) drawScatter(lastShown); });
+new MutationObserver(() => { if (lastShown) drawScatter(lastShown); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
