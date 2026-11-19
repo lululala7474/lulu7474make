@@ -146,7 +146,13 @@ td.n { font-family: var(--font-num); }
     <div class="ov" id="menu">
       <div class="box" id="menu-main">
         <h3>준비됐나요?</h3>
-        <div class="song"><b>첫걸음 120</b><span>기본 비트 곡 · 120 BPM · <span id="len"></span></span></div>
+        <div class="song"><b id="song-name">첫걸음 120</b><span id="song-meta"></span></div>
+        <div class="btns">
+          <button class="btn" id="pick" type="button">내 음악 파일로 노트 만들기</button>
+          <button class="btn" id="builtin" type="button" hidden>기본 곡으로</button>
+        </div>
+        <input type="file" id="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.flac,.aac" hidden>
+        <p class="hint" id="song-hint">내 컴퓨터에 있는 음악 파일(MP3, WAV, OGG 등)을 고르면 소리를 분석해서 노트를 자동으로 만들어요. 파일은 이 브라우저 밖으로 나가지 않아요.</p>
         <div class="row">
           <span>난이도</span>
           <div class="seg" role="radiogroup" aria-label="난이도">
@@ -252,9 +258,9 @@ td.n { font-family: var(--font-num); }
       </ul>
     </section>
     <section class="card">
-      <h2>최고 기록</h2>
+      <h2 id="best-title">최고 기록</h2>
       <div id="bests"></div>
-      <p class="muted">지금은 기본 비트 곡 하나예요. 기록은 이 브라우저에만 저장돼요.</p>
+      <p class="muted">기록은 곡마다 따로, 이 브라우저에만 저장돼요.</p>
     </section>
   </div>
 </div>
@@ -394,6 +400,8 @@ function buildChart(song, diff) {
 
 const SONG = buildSong();
 const CHARTS = { easy: buildChart(SONG, 'easy'), normal: buildChart(SONG, 'normal'), hard: buildChart(SONG, 'hard') };
+const BUILTIN = { id: 'builtin', name: '첫걸음 120', meta: '기본 비트 곡 · 120 BPM', length: SONG.length, charts: CHARTS, idle0: 10, comp: true, play: (ac, out, t0) => scheduleSong(ac, out, t0, SONG) };
+let CUR = BUILTIN;
 
 /* ---------- 소리 ---------- */
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
@@ -459,16 +467,16 @@ function start() {
   let ac;
   try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); } catch (e) { ac = null; }
   if (!ac) { $('#best-line').textContent = '이 브라우저에서는 소리를 낼 수 없어요.'; return; }
-  const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
-  const master = ac.createGain(); master.gain.value = 0.8; master.connect(comp);
+  const master = ac.createGain(); master.gain.value = CUR.comp ? 0.8 : 0.9;
+  if (CUR.comp) { const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination); master.connect(comp); } else master.connect(ac.destination);
   const t0 = ac.currentTime + LEAD_IN;
-  scheduleSong(ac, master, t0, SONG);
-  const notes = CHARTS[cfg.diff].map(n => ({ ...n, state: 0 }));
+  CUR.play(ac, master, t0);
+  const notes = CUR.charts[cfg.diff].map(n => ({ ...n, state: 0 }));
   const lanes = [[], [], [], []]; notes.forEach(n => lanes[n.lane].push(n));
   G = {
     ac, master, t0, notes, lanes, laneIdx: [0, 0, 0, 0], holding: [null, null, null, null], pressed: [false, false, false, false],
     counts: { p: 0, g: 0, o: 0, m: 0 }, combo: 0, maxCombo: 0, sum: 0, judged: 0,
-    total: notes.length + notes.filter(n => n.end).length, deltas: [], paused: false, done: false, fx: [], jt: null, flash: [0, 0, 0, 0], diff: cfg.diff
+    total: notes.length + notes.filter(n => n.end).length, deltas: [], paused: false, done: false, fx: [], jt: null, flash: [0, 0, 0, 0], diff: cfg.diff, song: CUR
   };
   showOv(null);
   document.documentElement.classList.add('playing');
@@ -509,7 +517,7 @@ function update() {
     const h = G.holding[l];
     if (h && t >= h.end) { h.state = 2; judge('p'); burst(l, 'p'); G.holding[l] = null; }
   }
-  if (t > SONG.length) finish();
+  if (t > G.song.length) finish();
 }
 function pause() {
   if (!G || G.done || G.paused) return;
@@ -538,12 +546,12 @@ function finish() {
   const acc = G.sum / G.total * 100, score = Math.round(1e6 * G.sum / G.total);
   const grade = acc >= 95 ? 'S' : acc >= 90 ? 'A' : acc >= 80 ? 'B' : acc >= 70 ? 'C' : 'D';
   const fc = G.counts.m === 0;
-  const bests = store.get('askl.best', {}), prev = bests[G.diff];
+  const bests = getBests(G.song.id), prev = bests[G.diff];
   const isNew = !prev || score > prev.score;
-  if (isNew) { bests[G.diff] = { score, grade, acc: Math.round(acc * 10) / 10, combo: G.maxCombo, fc, date: Date.now() }; store.set('askl.best', bests); }
+  if (isNew) { bests[G.diff] = { score, grade, acc: Math.round(acc * 10) / 10, combo: G.maxCombo, fc, date: Date.now() }; setBests(G.song.id, bests); }
   $('#r-grade').textContent = grade;
   $('#r-score').innerHTML = score.toLocaleString('ko-KR') + (isNew ? '<span class="tag">최고 기록</span>' : '');
-  $('#r-sub').textContent = `${DIFF_NAME[G.diff]} · 정확도 ${acc.toFixed(1)}% · 최대 콤보 ${G.maxCombo}${fc ? ' · 풀콤보!' : ''}`;
+  $('#r-sub').textContent = `${G.song.name} · ${DIFF_NAME[G.diff]} · 정확도 ${acc.toFixed(1)}% · 최대 콤보 ${G.maxCombo}${fc ? ' · 풀콤보!' : ''}`;
   ['p', 'g', 'o', 'm'].forEach(k => { $('#r-' + k).textContent = G.counts[k]; });
   const ds = G.deltas;
   if (ds.length >= 10) {
@@ -620,12 +628,17 @@ function refreshMenu() {
   $('#judge-o').textContent = cfg.judge + '%';
   $('#speed-o').textContent = cfg.speed.toFixed(1) + '배';
   $('#offset-o').textContent = (cfg.offset > 0 ? '+' : '') + cfg.offset + 'ms';
-  ['easy', 'normal', 'hard'].forEach(d => { $('#c-' + d).textContent = CHARTS[d].length + '노트'; });
-  const b = store.get('askl.best', {})[cfg.diff];
+  ['easy', 'normal', 'hard'].forEach(d => { $('#c-' + d).textContent = CUR.charts[d].length + '노트'; });
+  const len = CUR.length, mm = Math.floor(len / 60), ss = Math.round(len % 60);
+  $('#song-name').textContent = CUR.name;
+  $('#song-meta').textContent = `${CUR.meta} · ${mm}:${String(ss).padStart(2, '0')}`;
+  $('#builtin').hidden = CUR === BUILTIN;
+  const b = getBests(CUR.id)[cfg.diff];
   $('#best-line').textContent = b ? `${DIFF_NAME[cfg.diff]} 최고 기록: ${b.grade} · ${b.score.toLocaleString('ko-KR')}점 · 정확도 ${b.acc}%${b.fc ? ' · 풀콤보' : ''}` : `${DIFF_NAME[cfg.diff]} 난이도는 아직 기록이 없어요.`;
 }
 function renderBests() {
-  const bests = store.get('askl.best', {});
+  const bests = getBests(CUR.id);
+  $('#best-title').textContent = `최고 기록 · ${CUR.name}`;
   const rows = ['easy', 'normal', 'hard'].map(d => {
     const b = bests[d];
     return b ? `<tr><td>${DIFF_NAME[d]}</td><td class="n"><b>${b.grade}</b></td><td class="n">${b.score.toLocaleString('ko-KR')}</td><td class="n">${b.acc}%</td><td class="n">${b.combo}${b.fc ? ' FC' : ''}</td></tr>`
@@ -633,6 +646,151 @@ function renderBests() {
   }).join('');
   $('#bests').innerHTML = `<table><thead><tr><th>난이도</th><th>등급</th><th>점수</th><th>정확도</th><th>최대 콤보</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
+
+/* ---------- 곡별 최고 기록 ---------- */
+function allBests() { const a = store.get('askl.best2', null); return a || { builtin: store.get('askl.best', {}) }; }
+const getBests = id => allBests()[id] || {};
+function setBests(id, b) { const a = allBests(); a[id] = b; store.set('askl.best2', a); }
+
+/* ---------- 내 음악 파일 → 노트 자동 생성 ---------- */
+const HOP = 0.01; // 10ms 단위로 분석
+async function bandEnv(buf, chain) {
+  const sr = buf.sampleRate, oc = new OfflineAudioContext(1, buf.length, sr);
+  const src = oc.createBufferSource(); src.buffer = buf;
+  let node = src;
+  for (const [type, f] of chain) { const b = oc.createBiquadFilter(); b.type = type; b.frequency.value = f; node.connect(b); node = b; }
+  node.connect(oc.destination); src.start();
+  const out = (await oc.startRendering()).getChannelData(0);
+  const hop = Math.round(sr * HOP), n = Math.floor(out.length / hop), e = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let q = 0; for (let j = i * hop, k = j + hop; j < k; j++) q += out[j] * out[j]; e[i] = Math.log(1 + 1000 * Math.sqrt(q / hop)); }
+  return e;
+}
+function normFlux(e) {
+  const d = new Float32Array(e.length);
+  for (let i = 1; i < e.length; i++) d[i] = Math.max(0, e[i] - e[i - 1]);
+  let m = 0; for (const v of d) m += v; m = m / d.length || 1;
+  for (let i = 0; i < d.length; i++) d[i] /= m;
+  return d;
+}
+function analyzeBuffer(env) {
+  const [eL, eM, eH] = env, n = eL.length;
+  const fL = normFlux(eL), fM = normFlux(eM), fH = normFlux(eH);
+  const nv = new Float32Array(n);
+  for (let i = 0; i < n; i++) nv[i] = fL[i] * 1.0 + fM[i] * 0.8 + fH[i] * 0.6;
+  // 이동 평균
+  const pre = new Float64Array(n + 1); for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + nv[i];
+  const avg = (a, b) => { a = Math.max(0, a); b = Math.min(n, b); return (pre[b] - pre[a]) / Math.max(1, b - a); };
+  let gm = pre[n] / n;
+  const on = [];
+  for (let i = 2; i < n - 2; i++) {
+    const v = nv[i]; if (v <= 0) continue;
+    let isMax = true; for (let j = i - 5; j <= i + 5; j++) if (j !== i && j >= 0 && j < n && nv[j] > v) { isMax = false; break; }
+    if (!isMax) continue;
+    const local = avg(i - 50, i + 50);
+    if (v < local * 1.4 + gm * 0.5) continue;
+    const tot = eL[i] + eM[i] + eH[i] + 1e-6;
+    on.push({ t: i * HOP, i, s: v - local, c: (eM[i] * 0.5 + eH[i]) / tot });
+  }
+  // BPM (자기상관)
+  const a0 = Math.floor(n * 0.15), a1 = Math.min(n, a0 + 9000);
+  let best = 0, bestL = 50, sumAc = 0, cnt = 0;
+  for (let L = 31; L <= 86; L++) {
+    let acv = 0; for (let i = a0; i + L < a1; i++) acv += nv[i] * nv[i + L];
+    const bpm = 6000 / L, w = Math.exp(-Math.pow(Math.log2(bpm / 125), 2) * 1.2);
+    acv *= w; sumAc += acv; cnt++;
+    if (acv > best) { best = acv; bestL = L; }
+  }
+  let bpm = 6000 / bestL; if (bpm < 85) bpm *= 2;
+  const conf = best / (sumAc / cnt);
+  // 템포·박 위치를 곡 전체에 맞춰 세밀하게 찾기
+  let bestPh = 0, bestSum = -1, bestBpm = bpm;
+  for (let bc = bpm * 0.98; bc <= bpm * 1.02; bc += 0.02) {
+    const Pf = 6000 / bc;
+    for (let ph = 0; ph < Pf; ph += 0.5) {
+      let q = 0; for (let k = ph; k < n; k += Pf) q += nv[Math.round(k)] || 0;
+      if (q > bestSum) { bestSum = q; bestPh = ph; bestBpm = bc; }
+    }
+  }
+  bpm = bestBpm;
+  const P = 60 / bpm;
+  let phase = bestPh * HOP; const step = P / 4;
+  { // 박자 위치 미세 보정: 센 소리들이 격자에서 평균 얼마나 어긋났는지
+    const strong = on.slice().sort((a, b) => b.s - a.s).slice(0, Math.max(10, on.length >> 2));
+    const res = strong.map(o => { const r = (o.t - phase) / step; return (r - Math.round(r)) * step; }).sort((a, b) => a - b);
+    if (res.length) phase += res[res.length >> 1];
+  }
+  if (conf > 1.25) on.forEach(o => { const g = phase + Math.round((o.t - phase) / step) * step; if (Math.abs(g - o.t) < 0.025) o.t = g; });
+  return { on, bpm: Math.round(bpm), eM };
+}
+function chartFromOnsets(A, diff) {
+  const R = rng({ easy: 101, normal: 202, hard: 303 }[diff]);
+  const D = { easy: { gap: 0.36, drop: 0.5, chord: 0, hold: false }, normal: { gap: 0.17, drop: 0.22, chord: 0.12, hold: true }, hard: { gap: 0.095, drop: 0.06, chord: 0.3, hold: true } }[diff];
+  const on = A.on; if (!on.length) return [];
+  const ss = on.map(o => o.s).sort((a, b) => a - b), thr = ss[Math.floor(ss.length * D.drop)], acc = ss[Math.floor(ss.length * 0.85)];
+  const cand = on.filter(o => o.s >= thr).sort((a, b) => b.s - a.s), times = [], picked = [];
+  for (const o of cand) {
+    let lo = 0, hi = times.length; while (lo < hi) { const m = (lo + hi) >> 1; if (times[m] < o.t) lo = m + 1; else hi = m; }
+    if ((lo < times.length && times[lo] - o.t < D.gap) || (lo > 0 && o.t - times[lo - 1] < D.gap)) continue;
+    times.splice(lo, 0, o.t); picked.push(o);
+  }
+  picked.sort((a, b) => a.t - b.t);
+  // 밝기 순위로 레인 고르기 (낮은 소리는 왼쪽, 높은 소리는 오른쪽, 레인이 고르게 쓰이도록)
+  const cs = picked.map(o => o.c).sort((a, b) => a - b);
+  picked.forEach(o => { let lo = 0, hi = cs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (cs[m] < o.c) lo = m + 1; else hi = m; } o.rank = lo / cs.length; });
+  const notes = [], free = [0, 0, 0, 0]; let prevLane = -1, lastT = -9;
+  const near = (lane, t) => {
+    const order = [lane, lane + 1, lane - 1, lane + 2, lane - 2, lane + 3, lane - 3].filter(l => l >= 0 && l < 4);
+    for (const l of order) if (free[l] <= t - 0.02 && !(l === prevLane && t - lastT < 0.3)) return l;
+    for (const l of order) if (free[l] <= t - 0.02) return l;
+    return -1;
+  };
+  for (let k = 0; k < picked.length; k++) {
+    const o = picked[k], next = picked[k + 1] ? picked[k + 1].t : o.t + 9;
+    const lane = near(Math.min(3, Math.floor(o.rank * 4)), o.t); if (lane < 0) continue;
+    const n = { t: o.t, lane, end: null };
+    if (D.hold && next - o.t > 0.6) { // 소리가 길게 이어지면 롱노트
+      const lvl = A.eM[o.i]; let j = o.i + 1;
+      const lim = Math.min(A.eM.length - 1, Math.round((next - 0.15) / HOP));
+      while (j < lim && A.eM[j] > lvl * 0.72) j++;
+      const end = j * HOP;
+      if (end - o.t >= 0.4 && R() < 0.75) n.end = end;
+    }
+    free[lane] = (n.end || n.t) + 0.12; notes.push(n);
+    if (D.chord && !n.end && o.s >= acc && o.t - lastT >= 0.2 && R() < D.chord) {
+      const l2 = (lane < 2 ? [2, 3] : [0, 1])[Math.floor(R() * 2)];
+      if (free[l2] <= o.t - 0.02) { notes.push({ t: o.t, lane: l2, end: null }); free[l2] = o.t + 0.12; }
+    }
+    lastT = o.t; prevLane = lane;
+  }
+  return notes.sort((a, b) => a.t - b.t || a.lane - b.lane);
+}
+async function loadFile(file) {
+  const hint = $('#song-hint'), pickBtn = $('#pick');
+  pickBtn.disabled = true; hint.textContent = `"${file.name}" 읽는 중...`;
+  try {
+    const data = await file.arrayBuffer();
+    const dec = new OfflineAudioContext(1, 1, 44100);
+    const buf = await new Promise((res, rej) => { const p = dec.decodeAudioData(data, res, rej); if (p && p.catch) p.catch(rej); });
+    hint.textContent = '소리를 분석해서 노트를 만드는 중... (몇 초 걸려요)';
+    const env = await Promise.all([bandEnv(buf, [['lowpass', 150]]), bandEnv(buf, [['highpass', 300], ['lowpass', 2500]]), bandEnv(buf, [['highpass', 5000]])]);
+    const A = analyzeBuffer(env);
+    const charts = { easy: chartFromOnsets(A, 'easy'), normal: chartFromOnsets(A, 'normal'), hard: chartFromOnsets(A, 'hard') };
+    if (charts.normal.length < 10) throw new Error('few');
+    const name = file.name.replace(/\.[^.]+$/, '');
+    CUR = {
+      id: 'file:' + name + ':' + Math.round(buf.duration), name, meta: `내 음악 · 약 ${A.bpm} BPM · 자동 생성 노트`,
+      length: buf.duration + 0.5, charts, idle0: Math.max(0, charts.normal[0].t) + 2, comp: false,
+      play: (ac, out, t0) => { const s = ac.createBufferSource(); s.buffer = buf; s.connect(out); s.start(t0); }
+    };
+    hint.textContent = '노트를 만들었어요. 자동으로 만든 노트라 곡에 따라 조금 어색한 부분이 있을 수 있어요. 싱크가 안 맞으면 설정에서 조절하세요.';
+  } catch (e) {
+    hint.textContent = '이 파일은 열 수 없어요. MP3, WAV, OGG 같은 음악 파일인지 확인해 주세요.';
+  }
+  pickBtn.disabled = false; refreshMenu(); renderBests();
+}
+$('#pick').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; });
+$('#builtin').addEventListener('click', () => { CUR = BUILTIN; $('#song-hint').textContent = '기본 곡으로 돌아왔어요.'; refreshMenu(); renderBests(); });
 
 /* ---------- 설정 ---------- */
 let capturing = -1;
@@ -672,8 +830,8 @@ function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y
 function draw() {
   const now = performance.now();
   const live = G && !G.done;
-  const t = live ? songTime() : 10 + (now / 1000) % 24;
-  const notes = live ? G.notes : CHARTS[cfg.diff];
+  const t = live ? songTime() : CUR.idle0 + (now / 1000) % 24;
+  const notes = live ? G.notes : CUR.charts[cfg.diff];
   const pps = H * 0.42 * cfg.speed;
   ctx.fillStyle = '#120f1f'; ctx.fillRect(0, 0, W, H);
 
@@ -769,7 +927,7 @@ function draw() {
   }
   // 상단 정보
   ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, 0, W, 4);
-  ctx.fillStyle = '#ffb547'; ctx.fillRect(0, 0, W * Math.max(0, Math.min(1, t / SONG.length)), 4);
+  ctx.fillStyle = '#ffb547'; ctx.fillRect(0, 0, W * Math.max(0, Math.min(1, t / G.song.length)), 4);
   const score = Math.round(1e6 * G.sum / G.total), acc = G.judged ? G.sum / G.judged * 100 : 100;
   ctx.textAlign = 'right'; ctx.textBaseline = 'top';
   ctx.font = '700 22px "Chakra Petch", sans-serif'; ctx.fillStyle = '#ffffff';
@@ -781,11 +939,9 @@ function draw() {
 function loop() { update(); draw(); requestAnimationFrame(loop); }
 
 /* ---------- 시작 ---------- */
-const m = Math.floor(SONG.length / 60), s = Math.round(SONG.length % 60);
-$('#len').textContent = `${m}:${String(s).padStart(2, '0')}`;
 fit(); refreshMenu(); renderBests(); renderBinds();
 let rz = 0; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(fit, 100); });
-window.__askl = { get G() { return G; }, CHARTS, SONG, start, songTime: () => G && songTime() };
+window.__askl = { get G() { return G; }, get CUR() { return CUR; }, loadFile, CHARTS, SONG, start, songTime: () => G && songTime() };
 requestAnimationFrame(loop);
 })();
 </script>
