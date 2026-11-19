@@ -57,7 +57,7 @@ h2 { font-size: 17px; margin: 0; text-wrap: balance; }
 /* controls */
 .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.seg { display: inline-flex; background: var(--chip); border-radius: 10px; padding: 3px; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--chip); border-radius: 10px; padding: 3px; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg label { padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted); user-select: none; }
 .seg input:checked + label { background: var(--panel); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
@@ -165,6 +165,8 @@ details ul { padding-left: 20px; margin: 8px 0 0; display: flex; flex-direction:
         <input type="radio" name="mode" id="m-flick" value="flick"><label for="m-flick">플릭</label>
         <input type="radio" name="mode" id="m-grid" value="grid"><label for="m-grid">그리드</label>
         <input type="radio" name="mode" id="m-track" value="track"><label for="m-track">트래킹</label>
+        <input type="radio" name="mode" id="m-point" value="point"><label for="m-point">포인트 클릭</label>
+        <input type="radio" name="mode" id="m-follow" value="follow"><label for="m-follow">포인트 따라가기</label>
       </div>
     </div>
     <div class="group">
@@ -264,7 +266,8 @@ details ul { padding-left: 20px; margin: 8px 0 0; display: flex; flex-direction:
         <li>첫 움직임이 표적을 자주 지나치면 감도가 높은 것이고, 자주 못 미치면 감도가 낮은 거예요.</li>
         <li>추천 감도 = 지금 감도 ÷ (첫 움직임 거리 ÷ 표적까지 거리). 여러 판 해서 값이 비슷하게 나오면 믿을 만해요.</li>
         <li>정확하게 재려면 <b>게임 감도 모드</b>를 켜고, 윈도우의 <b>포인터 정확도 향상</b>은 꺼 주세요.</li>
-        <li>트래킹 모드는 표적보다 앞서가는지 뒤처지는지로 판단해요.</li>
+        <li>트래킹과 포인트 따라가기는 표적보다 앞서가는지 뒤처지는지로 판단해요.</li>
+        <li>포인트 클릭은 작은 점을 맞히는 정밀 연습이에요. 점 가운데에서 몇 픽셀 벗어났는지도 알려줘요.</li>
       </ul>
     </details>
   </section>
@@ -288,7 +291,9 @@ const GAMES = {
 const MODES = {
   flick: { name: '플릭', title: '플릭 연습', text: '표적이 하나씩 나타나요. 최대한 빠르고 정확하게 클릭하세요. 감도 판단에 가장 좋은 모드예요.' },
   grid: { name: '그리드', title: '그리드 연습', text: '표적 3개가 동시에 떠 있어요. 맞히면 다른 자리에 새로 생겨요. 연속 플릭 감각을 봐요.' },
-  track: { name: '트래킹', title: '트래킹 연습', text: '움직이는 표적 위에 조준점을 계속 올려 두세요. 클릭은 필요 없어요.' }
+  track: { name: '트래킹', title: '트래킹 연습', text: '움직이는 표적 위에 조준점을 계속 올려 두세요. 클릭은 필요 없어요.' },
+  point: { name: '포인트 클릭', title: '포인트 클릭 연습', text: '아주 작은 점이 하나씩 나타나요. 점 한가운데를 정확히 클릭하세요. 가운데에 가까울수록 점수가 높아요.' },
+  follow: { name: '포인트 따라가기', title: '포인트 따라가기 연습', text: '작은 점이 곡선 길을 따라 움직여요. 앞으로 갈 길이 흐리게 보여요. 마우스 포인터를 점에 붙여서 계속 따라가세요. 점점 빨라져요.' }
 };
 const coarse = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
 const cfg = Object.assign({ mode: 'flick', size: 'm', dur: 30, lock: !coarse, sound: true, game: 'valorant', dpi: 800, sens: 0.35, fov: 103, yaw: 0.07 }, store.get('aim.cfg', {}));
@@ -356,11 +361,14 @@ function fit() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (S.running) {
     S.cursor.x *= sx; S.cursor.y *= sy;
-    S.targets.forEach(t => { t.x *= sx; t.y *= sy; t.r = baseR() * (S.mode === 'track' ? 1.35 : 1); });
+    S.targets.forEach(t => { t.x *= sx; t.y *= sy; t.r = S.mode === 'track' ? baseR() * 1.35 : (S.mode === 'point' || S.mode === 'follow') ? pointR() : baseR(); });
   } else S.cursor = { x: W / 2, y: H / 2 };
 }
 const baseR = () => Math.max(8, H * { s: 0.028, m: 0.042, l: 0.06 }[cfg.size]);
 const rand = (a, b) => a + Math.random() * (b - a);
+const FLICKY = m => m === 'flick' || m === 'point';
+const TRACKY = m => m === 'track' || m === 'follow';
+const pointR = () => Math.max(4, H * { s: 0.009, m: 0.013, l: 0.019 }[cfg.size]);
 const isLocked = () => document.pointerLockElement === cv;
 
 /* ---------- sound ---------- */
@@ -378,7 +386,7 @@ function beep(freq, len, vol) {
 /* ---------- spawning ---------- */
 const TOP = 34; // HUD 높이
 function spawnFlick() {
-  const r = baseR(), c = S.cursor; let best = null;
+  const r = S.mode === 'point' ? pointR() : baseR(), c = S.cursor; let best = null;
   for (let i = 0; i < 60; i++) {
     const x = rand(r + 10, W - r - 10), y = rand(TOP + r + 6, H - r - 10);
     const d = Math.hypot(x - c.x, y - c.y);
@@ -400,6 +408,20 @@ function spawnGrid() {
   const p = free[Math.floor(Math.random() * free.length)];
   if (p) S.targets.push({ x: p.x, y: p.y, r, born: performance.now(), first: true });
 }
+function spawnFollow() {
+  const ph = () => Math.random() * Math.PI * 2;
+  S.path = { a: [ph(), ph(), ph(), ph()], f: [rand(0.55, 0.75), rand(1.1, 1.5), rand(0.45, 0.65), rand(0.9, 1.3)], u: 0 };
+  const p0 = pathAt(0);
+  S.targets.push({ x: p0.x, y: p0.y, r: pointR(), vx: 0, vy: 0 });
+  S.cursor = { x: p0.x, y: p0.y };
+}
+function pathAt(u) {
+  const P = S.path, mx = W * 0.42, my = (H - TOP) * 0.40, cx = W / 2, cy = (H + TOP) / 2;
+  return {
+    x: cx + mx * (0.65 * Math.sin(u * P.f[0] + P.a[0]) + 0.35 * Math.sin(u * P.f[1] + P.a[1])),
+    y: cy + my * (0.65 * Math.sin(u * P.f[2] + P.a[2]) + 0.35 * Math.sin(u * P.f[3] + P.a[3]))
+  };
+}
 function spawnTrack() {
   const r = baseR() * 1.35;
   S.targets.push({ x: W / 2, y: (H + TOP) / 2, r, vx: 0, vy: 0, dvx: 0, dvy: 0, next: 0 });
@@ -412,12 +434,13 @@ function begin(lockOn) {
     running: true, mode: cfg.mode, lock: lockOn, t0: now, dur: cfg.dur * 1000,
     cursor: { x: W / 2, y: (H + TOP) / 2 }, targets: [], effects: [],
     hits: 0, misses: 0, recs: [], samples: [], from: null, lastHit: now,
-    track: { inT: 0, total: 0, dist: 0, along: 0 },
+    track: { inT: 0, total: 0, dist: 0, along: 0, distPx: 0 }, errPx: [],
     sens: cfg.sens, game: cfg.game
   };
   S.from = { ...S.cursor }; S.samples = [{ t: now, x: S.cursor.x, y: S.cursor.y }];
-  if (S.mode === 'flick') spawnFlick();
+  if (FLICKY(S.mode)) spawnFlick();
   else if (S.mode === 'grid') { spawnGrid(); spawnGrid(); spawnGrid(); }
+  else if (S.mode === 'follow') spawnFollow();
   else spawnTrack();
   $('#overlay').hidden = true;
   cv.style.cursor = lockOn ? 'none' : 'crosshair';
@@ -449,6 +472,7 @@ $('#start').addEventListener('click', () => {
   } else begin(false);
 });
 document.addEventListener('pointerlockchange', () => { if (S.running && S.lock && !isLocked()) endRun(true); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.running && !S.lock) endRun(true); });
 
 function endRun(early) {
   if (!S.running) return;
@@ -499,7 +523,7 @@ document.addEventListener('mousedown', e => {
 });
 
 function shoot(x, y) {
-  if (S.mode === 'track') return;
+  if (TRACKY(S.mode)) return;
   const now = performance.now();
   let hi = -1, hd = Infinity;
   S.targets.forEach((t, i) => { const d = Math.hypot(t.x - x, t.y - y); if (d <= t.r && d < hd) { hi = i; hd = d; } });
@@ -510,20 +534,20 @@ function shoot(x, y) {
   }
   const t = S.targets[hi];
   const rec = analyze(S.from, t, S.samples, { x, y });
-  rec.time = now - (S.mode === 'flick' ? t.born : S.lastHit);
-  rec.first = t.first; rec.err = hd / t.r;
+  rec.time = now - (FLICKY(S.mode) ? t.born : S.lastHit);
+  rec.first = t.first; rec.err = hd / t.r; S.errPx.push(hd);
   S.recs.push(rec); S.hits++; S.lastHit = now;
-  S.effects.push({ kind: 'hit', x: t.x, y: t.y, r: t.r, t: now }); beep(880, 0.06, 0.06);
+  S.effects.push({ kind: 'hit', x: t.x, y: t.y, r: S.mode === 'point' ? t.r * 2.5 : t.r, t: now }); beep(880, 0.06, 0.06);
   S.targets.splice(hi, 1);
   S.from = { x, y }; S.samples = [{ t: now, x, y }];
-  if (S.mode === 'flick') spawnFlick(); else spawnGrid();
+  if (FLICKY(S.mode)) spawnFlick(); else spawnGrid();
 }
 
 /* 첫 움직임(가장 빠른 구간 뒤 처음 멈춘 지점) 찾기 */
 function analyze(from, t, smp, click) {
   const dx = t.x - from.x, dy = t.y - from.y, dist = Math.hypot(dx, dy);
   const out = { dist, ratio: null, ex: 0, ey: 0 };
-  if (dist < t.r * 2.5 || smp.length < 5) return out;
+  if (dist < Math.max(t.r * 2.5, 40) || smp.length < 5) return out;
   const ux = dx / dist, uy = dy / dist;
   const v = [0];
   for (let i = 1; i < smp.length; i++) v.push(Math.hypot(smp[i].x - smp[i - 1].x, smp[i].y - smp[i - 1].y) / Math.max(smp[i].t - smp[i - 1].t, 1));
@@ -550,6 +574,7 @@ function tick(now) {
   if (S.running) {
     if (now - S.t0 >= S.dur) endRun(false);
     else if (S.mode === 'track') stepTrack(now, dt);
+    else if (S.mode === 'follow') stepFollow(now, dt);
   }
   draw(now);
   requestAnimationFrame(tick);
@@ -567,11 +592,23 @@ function stepTrack(now, dt) {
   if (t.x > W - t.r - 6) { t.x = W - t.r - 6; t.vx = -Math.abs(t.vx); t.dvx = -Math.abs(t.dvx); }
   if (t.y < TOP + t.r + 6) { t.y = TOP + t.r + 6; t.vy = Math.abs(t.vy); t.dvy = Math.abs(t.dvy); }
   if (t.y > H - t.r - 6) { t.y = H - t.r - 6; t.vy = -Math.abs(t.vy); t.dvy = -Math.abs(t.dvy); }
+  trackStats(t, dt, t.r);
+}
+function trackStats(t, dt, tol) {
   const c = S.cursor, d = Math.hypot(c.x - t.x, c.y - t.y);
-  S.track.total += dt; S.track.dist += d / t.r * dt;
-  t.on = d <= t.r; if (t.on) S.track.inT += dt;
+  S.track.total += dt; S.track.dist += d / t.r * dt; S.track.distPx += d * dt;
+  t.on = d <= tol; if (t.on) S.track.inT += dt;
   const sp = Math.hypot(t.vx, t.vy);
   if (sp > 1) S.track.along += ((c.x - t.x) * t.vx + (c.y - t.y) * t.vy) / sp / t.r * dt;
+}
+function stepFollow(now, dt) {
+  const t = S.targets[0]; if (!t) return;
+  const prog = Math.min(1, (now - S.t0) / S.dur);
+  S.path.u += dt * (0.55 + 0.9 * prog); // 점점 빨라짐
+  const p = pathAt(S.path.u);
+  t.vx = (p.x - t.x) / Math.max(dt, 0.001); t.vy = (p.y - t.y) / Math.max(dt, 0.001);
+  t.x = p.x; t.y = p.y;
+  trackStats(t, dt, t.r * 2.5);
 }
 function draw(now) {
   if (!W) return;
@@ -585,6 +622,25 @@ function draw(now) {
 
   const targets = S.running ? S.targets : [{ x: W / 2, y: H / 2, r: baseR() }];
   targets.forEach(t => {
+    if (S.running && S.mode === 'follow') {
+      ctx.strokeStyle = 'rgba(255,179,64,0.28)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      for (let k = 0; k <= 40; k++) { const q = pathAt(S.path.u + k * 0.03); k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+      ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = t.on ? RANGE.hit : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r * 2.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = t.on ? RANGE.hit : RANGE.track;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (S.running && S.mode === 'point') {
+      const r = t.r * Math.min(1, 0.4 + (now - t.born) / 120);
+      ctx.strokeStyle = 'rgba(255,138,61,0.45)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(t.x, t.y, r * 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = RANGE.target; ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = RANGE.ring; ctx.beginPath(); ctx.arc(t.x, t.y, Math.max(1.2, r * 0.3), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
     if (S.running && S.mode === 'track') {
       ctx.fillStyle = t.on ? RANGE.hit : RANGE.track;
       ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
@@ -629,8 +685,9 @@ function draw(now) {
     ctx.fillText(`${left.toFixed(1)}초`, 12, TOP / 2);
     ctx.textAlign = 'right';
     let right;
-    if (S.mode === 'track') right = `조준 유지 ${S.track.total ? Math.round(S.track.inT / S.track.total * 100) : 0}%`;
+    if (TRACKY(S.mode)) right = `조준 유지 ${S.track.total ? Math.round(S.track.inT / S.track.total * 100) : 0}%`;
     else { const n = S.hits + S.misses; right = `명중 ${S.hits}  ·  정확도 ${n ? Math.round(S.hits / n * 100) : 100}%`; }
+    if (S.mode === 'point' && S.errPx.length) right = `평균 오차 ${(S.errPx.reduce((a, b) => a + b, 0) / S.errPx.length).toFixed(1)}px  ·  ` + right;
     ctx.fillText(right, W - 12, TOP / 2);
     ctx.fillStyle = RANGE.target;
     ctx.fillRect(0, TOP - 2, W * left / (S.dur / 1000), 2);
@@ -642,10 +699,10 @@ const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
 const quant = (a, q) => { const s = [...a].sort((x, y) => x - y); const i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
 function summarize(early) {
   const base = { mode: S.mode, date: Date.now(), lock: S.lock, sens: S.sens, game: S.game, size: cfg.size };
-  if (S.mode === 'track') {
+  if (TRACKY(S.mode)) {
     const T = S.track.total;
     if (T < 5) return null;
-    return Object.assign(base, { onPct: S.track.inT / T, meanDist: S.track.dist / T, lead: S.track.along / T });
+    return Object.assign(base, { onPct: S.track.inT / T, meanDist: S.track.dist / T, meanPx: S.track.distPx / T, lead: S.track.along / T });
   }
   if (S.hits < (early ? 8 : 5)) return null;
   const valid = S.recs.filter(r => r.ratio !== null);
@@ -655,6 +712,7 @@ function summarize(early) {
     perTarget: S.recs.reduce((s, r) => s + r.time, 0) / S.recs.length,
     firstTry: S.recs.filter(r => r.first).length / S.recs.length,
     n: ratios.length,
+    errPx: S.errPx.length ? S.errPx.reduce((a, b) => a + b, 0) / S.errPx.length : null,
     med: ratios.length ? median(ratios) : null,
     iqr: ratios.length >= 4 ? quant(ratios, 0.75) - quant(ratios, 0.25) : null,
     pts: valid.map(r => [Math.round(r.ex * 100) / 100, Math.round(r.ey * 100) / 100])
@@ -662,8 +720,8 @@ function summarize(early) {
 }
 function verdictOf(res) {
   const gname = GAMES[res.game] ? GAMES[res.game].name : '';
-  if (res.mode === 'track') {
-    const lead = res.lead;
+  if (TRACKY(res.mode)) {
+    const lead = res.mode === 'follow' ? res.lead / 2.5 : res.lead;
     if (res.onPct < 0.15) return { cls: 'na', head: '표적을 거의 못 따라갔어요', body: '표적을 크게 하거나 감도를 조금 낮춰서 먼저 따라가는 감각을 잡아보세요.', factor: null };
     if (lead > 0.25) return { cls: 'over', head: '조준점이 표적보다 앞서가요', body: `움직이는 방향으로 평균 표적 반지름의 ${Math.round(lead * 100)}%만큼 앞서 있었어요. 감도를 5% 정도 낮춰보세요.`, factor: 0.95 };
     if (lead < -0.25) return { cls: 'under', head: '조준점이 표적보다 뒤처져요', body: `움직이는 방향 뒤쪽으로 평균 표적 반지름의 ${Math.round(-lead * 100)}%만큼 늦었어요. 감도를 5% 정도 올려보세요.`, factor: 1.05 };
@@ -703,7 +761,13 @@ function showResult(res, sample) {
 
   const st = $('#stats');
   const tile = (b, s) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`;
-  if (res.mode === 'track') {
+  if (res.mode === 'follow') {
+    st.innerHTML = tile(Math.round(res.onPct * 100) + '%', '점을 붙잡고 있던 시간') + tile(res.meanPx.toFixed(1) + '<small style="font-size:14px"> px</small>', '점과의 평균 거리') +
+      tile((res.lead > 0 ? '+' : '') + res.lead.toFixed(2), '앞섬(+) / 뒤처짐(−)') + tile(fmtSens(res.sens), res.lock ? '측정한 게임 감도' : '일반 커서로 측정');
+  } else if (res.mode === 'point') {
+    st.innerHTML = tile(res.hits, '명중') + tile(Math.round(res.acc * 100) + '%', '정확도') +
+      tile((res.errPx ?? 0).toFixed(1) + '<small style="font-size:14px"> px</small>', '점 가운데에서 평균 오차') + tile(Math.round(res.perTarget) + '<small style="font-size:14px"> ms</small>', '점당 걸린 시간');
+  } else if (res.mode === 'track') {
     st.innerHTML = tile(Math.round(res.onPct * 100) + '%', '표적 위에 있던 시간') + tile(res.meanDist.toFixed(2), '평균 거리 (표적 반지름 = 1)') +
       tile((res.lead > 0 ? '+' : '') + res.lead.toFixed(2), '앞섬(+) / 뒤처짐(−)') + tile(fmtSens(res.sens), res.lock ? '측정한 게임 감도' : '일반 커서로 측정');
   } else {
@@ -726,7 +790,7 @@ function drawScatter(res) {
   const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const T = tokens();
   g.clearRect(0, 0, w, h);
-  const isTrack = res.mode === 'track';
+  const isTrack = TRACKY(res.mode);
   $('#sc-title').textContent = isTrack ? '앞섬 · 뒤처짐' : '첫 움직임이 멈춘 곳';
   $('#sc-legend').hidden = isTrack;
   $('#sc-hint').textContent = isTrack
@@ -735,7 +799,7 @@ function drawScatter(res) {
   const cx = w / 2, cy = h / 2, unit = Math.min(w / 9, h / 7);
   g.font = '12px "IBM Plex Sans KR", sans-serif'; g.textBaseline = 'middle';
   if (isTrack) {
-    const lim = 1.5, scale = (w / 2 - 30) / lim, v = Math.max(-lim, Math.min(lim, res.lead));
+    const lim = 1.5, scale = (w / 2 - 30) / lim, v = Math.max(-lim, Math.min(lim, res.mode === "follow" ? res.lead / 2.5 : res.lead));
     g.strokeStyle = T.line; g.lineWidth = 1;
     g.beginPath(); g.moveTo(30, cy); g.lineTo(w - 30, cy); g.stroke();
     g.fillStyle = v >= 0 ? T.over : T.under;
@@ -777,7 +841,7 @@ function renderHistory() {
     const v = verdictOf(r);
     const d = new Date(r.date);
     const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const score = r.mode === 'track' ? `유지 ${Math.round(r.onPct * 100)}%` : `${r.hits}개 · ${Math.round(r.acc * 100)}%`;
+    const score = TRACKY(r.mode) ? `유지 ${Math.round(r.onPct * 100)}%` : r.mode === 'point' && r.errPx != null ? `${r.hits}개 · 오차 ${r.errPx.toFixed(1)}px` : `${r.hits}개 · ${Math.round(r.acc * 100)}%`;
     const cls = { over: 'b-over', under: 'b-under', good: 'b-good' }[v.cls] || '';
     const verdict = { over: '높음', under: '낮음', good: '적당', na: '판단 보류' }[v.cls];
     const sens = r.lock ? `${(GAMES[r.game] || GAMES.custom).name} ${r.sens}` : '일반 커서';
@@ -793,7 +857,6 @@ function updateOverlay() {
   let txt = m.text;
   if (cfg.lock) txt += ` 게임 감도 모드: ${(GAMES[cfg.game]).name} 감도 ${cfg.sens} · ${cfg.dpi} DPI로 움직여요.`;
   $('#ov-text').textContent = txt;
-  $('#ov-esc').hidden = !cfg.lock;
 }
 function showNote(t) { const n = $('#ov-note'); n.hidden = !t; if (t) n.textContent = t; }
 let toastTimer = 0;
