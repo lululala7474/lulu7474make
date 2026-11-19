@@ -39,6 +39,8 @@
   .planner .btn.main { background: #6366f1; }
   .weather .btn.main { background: #2563eb; }
   .exchange .btn.main { background: #059669; }
+  .rhythm .btn.main { background: #7fd6ff; color: #120f1f; }
+  .rhythm .ico { width: 64px; height: 64px; border-radius: 16px; background: #120f1f; display: grid; place-items: center; }
   .aim .btn.main { background: #ff8a3d; color: #1d0e03; }
   .aim .ico { width: 64px; height: 64px; border-radius: 16px; background: #16201d; display: grid; place-items: center; }
   .guide { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-top: 20px; font-size: 14px; line-height: 1.7; }
@@ -94,6 +96,17 @@
       <p>화면에 나오는 표적을 클릭하면서 마우스 움직임을 분석해, 게임 감도가 높은지 낮은지와 추천 감도를 알려줍니다. 컴퓨터(마우스)용.</p>
       <div class="btns">
         <a class="btn main" href="aim/">연습 시작</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="app rhythm">
+    <div class="ico" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 40 40"><rect x="3" y="8" width="7" height="5" rx="2" fill="#ffb547"/><rect x="12" y="18" width="7" height="5" rx="2" fill="#7fd6ff"/><rect x="21" y="4" width="7" height="5" rx="2" fill="#7fd6ff"/><rect x="30" y="14" width="7" height="5" rx="2" fill="#ffb547"/><rect x="3" y="29" width="34" height="2.5" rx="1" fill="#fff"/></svg></div>
+    <div>
+      <h2>ASKL 리듬</h2>
+      <p>떨어지는 노트에 맞춰 A·S·K·L 키를 누르는 4키 리듬게임. 난이도 3단계, 키 설정, UI 크기, 판정선 위치, 싱크 조절.</p>
+      <div class="btns">
+        <a class="btn main" href="rhythm/">게임 시작</a>
       </div>
     </div>
   </section>

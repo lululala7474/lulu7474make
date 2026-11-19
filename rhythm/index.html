@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASKL 리듬</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 가운데 세로 무대(4레인) 하나, 그 위에 메뉴/일시정지/결과 오버레이. 아래에 조작법과 최고 기록 */
+:root {
+  --bg: #f2f0f6;
+  --panel: #ffffff;
+  --ink: #1a1729;
+  --muted: #625d76;
+  --line: #dcd8e6;
+  --accent: #c97700;
+  --chip: #e8e5f0;
+  --font-display: "Black Han Sans", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-num: "Chakra Petch", "IBM Plex Sans KR", system-ui, sans-serif;
+  /* 무대는 두 테마 모두 같은 어두운 색 */
+  --stage: #120f1f;
+  --outer: #ffb547;
+  --inner: #7fd6ff;
+  --perfect: #ffe66d;
+  --miss: #ff5c7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0a14; --panel: #17142a; --ink: #ebe8f5; --muted: #a29cb8; --line: #2a2640; --accent: #ffb547; --chip: #211d36;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0a14; --panel: #17142a; --ink: #ebe8f5; --muted: #a29cb8; --line: #2a2640; --accent: #ffb547; --chip: #211d36;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html.playing, html.playing body { overflow: hidden; overscroll-behavior: none; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 34px; margin: 0; letter-spacing: .02em; }
+h1 .o { color: var(--outer); -webkit-text-stroke: 1px #00000018; }
+h1 .i { color: #3aa8d8; }
+header p { margin: 0; color: var(--muted); }
+h2 { font-size: 16px; margin: 0; }
+
+.stage { position: relative; border-radius: 16px; overflow: hidden; background: var(--stage); touch-action: none; user-select: none; -webkit-user-select: none; }
+#field { display: block; width: 100%; }
+.ov {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgb(12 10 22 / .78); backdrop-filter: blur(3px); color: #ece9f7;
+}
+.box { width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; max-height: 100%; overflow-y: auto; }
+.box h3 { font-family: var(--font-display); font-weight: 400; font-size: 30px; margin: 0; color: #fff; letter-spacing: .02em; }
+.song { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; background: rgb(255 255 255 / .06); }
+.song b { font-size: 17px; }
+.song span { font-size: 13px; color: #b3adc9; }
+.row { display: flex; flex-direction: column; gap: 6px; }
+.row > span { font-size: 12px; letter-spacing: .08em; color: #b3adc9; font-weight: 700; }
+.seg { display: flex; background: rgb(255 255 255 / .08); border-radius: 10px; padding: 3px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { flex: 1; text-align: center; padding: 7px 6px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #c9c4dc; line-height: 1.3; }
+.seg label small { display: block; font-size: 11px; opacity: .75; font-family: var(--font-num); }
+.seg input:checked + label { background: #ece9f7; color: #120f1f; font-weight: 700; }
+.seg input:focus-visible + label { outline: 2px solid var(--outer); outline-offset: 1px; }
+.slider { display: flex; align-items: center; gap: 12px; }
+.slider input { flex: 1; accent-color: var(--outer); min-width: 0; }
+.slider output { font-family: var(--font-num); font-size: 15px; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.hint { font-size: 12px; color: #a39dba; margin: 0; }
+.btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 11px 18px; cursor: pointer;
+  background: rgb(255 255 255 / .1); color: #ece9f7; flex: 1; white-space: nowrap;
+}
+.btn.main { background: var(--outer); color: #1b1200; font-size: 17px; }
+.btn:hover { filter: brightness(1.1); }
+.btn:focus-visible { outline: 3px solid var(--inner); outline-offset: 2px; }
+kbd { font-family: var(--font-num); font-size: 12px; padding: 1px 6px; border-radius: 5px; background: rgb(255 255 255 / .14); }
+.best { font-size: 13px; color: #c9c4dc; margin: 0; }
+.binds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.bind {
+  font: inherit; font-family: var(--font-num); font-weight: 700; font-size: 18px; padding: 10px 4px; border-radius: 10px; cursor: pointer;
+  background: rgb(255 255 255 / .06); color: #fff; border: 2px solid var(--c); display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0;
+}
+.bind small { font-family: var(--font-body); font-size: 11px; font-weight: 500; color: #b3adc9; }
+.bind.wait { background: var(--c); color: #120f1f; }
+.bind.wait small { color: #120f1f; }
+.bind:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.seg.tight label { padding: 7px 2px; font-family: var(--font-num); font-size: 13px; }
+
+.grade { display: flex; align-items: center; gap: 18px; }
+.grade .g { font-family: var(--font-num); font-weight: 700; font-size: 76px; line-height: 1; color: var(--perfect); }
+.grade .s b { display: block; font-family: var(--font-num); font-size: 32px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.grade .s span { font-size: 13px; color: #b3adc9; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--perfect); color: #241d00; margin-left: 6px; }
+.counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.counts div { padding: 8px; border-radius: 10px; background: rgb(255 255 255 / .06); text-align: center; }
+.counts b { display: block; font-family: var(--font-num); font-size: 20px; font-variant-numeric: tabular-nums; }
+.counts span { font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.timing { font-size: 14px; color: #d6d1e8; margin: 0; }
+
+.below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.keys { display: flex; gap: 8px; align-items: flex-end; }
+.cap {
+  width: 46px; height: 46px; border-radius: 9px; display: grid; place-items: center; font-family: var(--font-num); font-weight: 700; font-size: 19px;
+  border: 1px solid var(--line); border-bottom-width: 4px; background: var(--bg);
+}
+.cap.o { border-color: var(--outer); }
+.cap.i { border-color: #3aa8d8; }
+.gap { width: 26px; text-align: center; color: var(--muted); font-size: 12px; align-self: center; }
+.card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 3px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); }
+td.n { font-family: var(--font-num); }
+.muted { color: var(--muted); font-size: 13px; margin: 0; }
+@media (max-width: 680px) {
+  .below { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1><span class="o">A</span><span class="i">S</span><span class="i">K</span><span class="o">L</span> 리듬</h1>
+    <p>떨어지는 노트가 판정선에 닿을 때 A · S · K · L 키를 누르는 4키 리듬게임</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="field" aria-label="리듬게임 화면"></canvas>
+
+    <div class="ov" id="menu">
+      <div class="box" id="menu-main">
+        <h3>준비됐나요?</h3>
+        <div class="song"><b>첫걸음 120</b><span>기본 비트 곡 · 120 BPM · <span id="len"></span></span></div>
+        <div class="row">
+          <span>난이도</span>
+          <div class="seg" role="radiogroup" aria-label="난이도">
+            <input type="radio" name="diff" id="d-easy" value="easy"><label for="d-easy">쉬움<small id="c-easy"></small></label>
+            <input type="radio" name="diff" id="d-normal" value="normal"><label for="d-normal">보통<small id="c-normal"></small></label>
+            <input type="radio" name="diff" id="d-hard" value="hard"><label for="d-hard">어려움<small id="c-hard"></small></label>
+          </div>
+        </div>
+        <div class="row">
+          <span>노트 속도</span>
+          <div class="slider"><input type="range" id="speed" min="1" max="4" step="0.1"><output id="speed-o"></output></div>
+        </div>
+        <p class="best" id="best-line"></p>
+        <div class="btns">
+          <button class="btn main" id="go" type="button" style="flex:2">시작 <kbd>Enter</kbd></button>
+          <button class="btn" id="open-set" type="button">설정</button>
+        </div>
+        <p class="hint">키보드가 한글 입력 상태여도 그대로 돼요. 휴대폰은 레인을 손가락으로 눌러요.</p>
+      </div>
+
+      <div class="box" id="menu-set" hidden>
+        <h3>설정</h3>
+        <div class="row">
+          <span>키 설정</span>
+          <div class="binds" id="binds"></div>
+          <p class="hint" id="bind-hint">바꿀 레인을 누르고 원하는 키를 누르세요. 이미 쓰는 키면 두 레인이 서로 바뀌어요.</p>
+        </div>
+        <div class="row">
+          <span>UI 크기</span>
+          <div class="seg tight" role="radiogroup" aria-label="UI 크기">
+            <input type="radio" name="ui" id="ui-100" value="100"><label for="ui-100">100%</label>
+            <input type="radio" name="ui" id="ui-90" value="90"><label for="ui-90">90%</label>
+            <input type="radio" name="ui" id="ui-80" value="80"><label for="ui-80">80%</label>
+            <input type="radio" name="ui" id="ui-70" value="70"><label for="ui-70">70%</label>
+            <input type="radio" name="ui" id="ui-60" value="60"><label for="ui-60">60%</label>
+            <input type="radio" name="ui" id="ui-50" value="50"><label for="ui-50">50%</label>
+          </div>
+          <p class="hint">레인 폭, 노트, 키 칸, 글자 크기가 같이 줄어들어요.</p>
+        </div>
+        <div class="row">
+          <span>판정선 위치</span>
+          <div class="slider"><input type="range" id="judge" min="55" max="88" step="1"><output id="judge-o"></output></div>
+          <p class="hint">화면 위에서부터의 위치예요. 숫자가 작을수록 판정선이 위로 올라가요.</p>
+        </div>
+        <div class="row">
+          <span>싱크 조절</span>
+          <div class="slider"><input type="range" id="offset" min="-150" max="150" step="5"><output id="offset-o"></output></div>
+          <p class="hint">소리와 노트가 안 맞으면 조절하세요. 결과 화면에서 자동으로 맞춰 줄 수도 있어요.</p>
+        </div>
+        <div class="btns">
+          <button class="btn" id="reset-set" type="button">기본값으로</button>
+          <button class="btn main" id="close-set" type="button">완료</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ov" id="pause" hidden>
+      <div class="box">
+        <h3>일시정지</h3>
+        <div class="btns">
+          <button class="btn main" id="resume" type="button">계속 <kbd>Esc</kbd></button>
+        </div>
+        <div class="btns">
+          <button class="btn" id="restart" type="button">처음부터 <kbd>R</kbd></button>
+          <button class="btn" id="tomenu" type="button">메뉴로</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ov" id="result" hidden>
+      <div class="box">
+        <div class="grade">
+          <div class="g" id="r-grade">A</div>
+          <div class="s"><b id="r-score">0</b><span id="r-sub"></span></div>
+        </div>
+        <div class="counts">
+          <div><b id="r-p">0</b><span style="color:var(--perfect)">PERFECT</span></div>
+          <div><b id="r-g">0</b><span style="color:var(--inner)">GREAT</span></div>
+          <div><b id="r-o">0</b><span style="color:#b9f28a">GOOD</span></div>
+          <div><b id="r-m">0</b><span style="color:var(--miss)">MISS</span></div>
+        </div>
+        <p class="timing" id="r-timing"></p>
+        <div class="btns" id="sync-row" hidden><button class="btn" id="sync" type="button"></button></div>
+        <div class="btns">
+          <button class="btn main" id="again" type="button">다시 하기 <kbd>R</kbd></button>
+          <button class="btn" id="back" type="button">메뉴로</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="below">
+    <section class="card">
+      <h2>조작법</h2>
+      <div class="keys" aria-hidden="true">
+        <div class="cap o" id="cap0">A</div><div class="cap i" id="cap1">S</div><div class="gap">왼손 · 오른손</div><div class="cap i" id="cap2">K</div><div class="cap o" id="cap3">L</div>
+      </div>
+      <ul>
+        <li>노트가 흰 판정선에 닿는 순간 그 레인의 키를 눌러요. 키는 메뉴의 설정에서 바꿀 수 있어요.</li>
+        <li>긴 노트는 꼬리가 끝날 때까지 꾹 누르고 있어요.</li>
+        <li><kbd style="background:var(--chip)">Esc</kbd> 일시정지 · <kbd style="background:var(--chip)">R</kbd> 처음부터 (일시정지 중)</li>
+        <li>판정: PERFECT ±45ms · GREAT ±90ms · GOOD ±135ms</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h2>최고 기록</h2>
+      <div id="bests"></div>
+      <p class="muted">지금은 기본 비트 곡 하나예요. 기록은 이 브라우저에만 저장돼요.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const DEFAULT_KEYS = ['KeyA', 'KeyS', 'KeyK', 'KeyL'];
+const KEY_NAMES = { Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Minus: '-', Equal: '=', Backquote: '`', Space: 'Space', ShiftLeft: 'L Shift', ShiftRight: 'R Shift', ControlLeft: 'L Ctrl', ControlRight: 'R Ctrl', AltLeft: 'L Alt', AltRight: 'R Alt', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', CapsLock: 'Caps', Tab: 'Tab' };
+const keyLabel = c => { let m = /^Key(.)$/.exec(c) || /^Digit(.)$/.exec(c); if (m) return m[1]; m = /^Numpad(.+)$/.exec(c); if (m) return 'N' + m[1]; return KEY_NAMES[c] || c; };
+const COLORS = ['#ffb547', '#7fd6ff', '#7fd6ff', '#ffb547'];
+const DIFF_NAME = { easy: '쉬움', normal: '보통', hard: '어려움' };
+const BPM = 120, BEAT = 60 / BPM, STEP = BEAT / 4, BAR = BEAT * 4, LEAD_IN = 3;
+const W_P = 0.045, W_G = 0.09, W_O = 0.135;
+const DEFAULTS = { diff: 'normal', speed: 2.0, offset: 0, ui: 100, judge: 84, keys: DEFAULT_KEYS.slice() };
+const cfg = Object.assign({}, DEFAULTS, store.get('askl.cfg', {}));
+if (!Array.isArray(cfg.keys) || cfg.keys.length !== 4) cfg.keys = DEFAULT_KEYS.slice();
+const saveCfg = () => store.set('askl.cfg', cfg);
+
+/* ---------- 곡 만들기 (직접 합성하는 기본 비트) ---------- */
+function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+const SECTIONS = [['intro', 4, 0], ['verse', 8, 1], ['chorus', 8, 2], ['break', 4, 0.5], ['chorus', 8, 2], ['outro', 4, 1]];
+const CHORDS = [45, 41, 48, 43]; // Am F C G
+const SCALE = [57, 60, 62, 64, 67, 69, 72, 74, 76, 79];
+const pick = (R, w) => { let x = R(); for (const [v, p] of w) { if ((x -= p) <= 0) return v; } return w[w.length - 1][0]; };
+const walk = (R, d) => Math.max(0, Math.min(SCALE.length - 1, d + [-2, -1, -1, 0, 1, 1, 2][Math.floor(R() * 7)]));
+function makeMotif(R, name) {
+  const W = name === 'chorus' ? [[1, .14], [2, .52], [4, .24], [6, .10]] : name === 'break' ? [[4, .5], [8, .5]] : [[2, .45], [4, .38], [8, .12], [1, .05]];
+  const out = []; let step = 0, deg = 4 + Math.floor(R() * 3);
+  while (step < 32) {
+    let len = pick(R, W);
+    if (len === 1) {
+      deg = walk(R, deg); out.push({ step, len: 1, deg });
+      deg = walk(R, deg); out.push({ step: step + 1, len: 1, deg });
+      step += 2; continue;
+    }
+    if (step + len > 32) len = 32 - step;
+    const rest = step > 0 && R() < (name === 'break' ? 0.25 : 0.12);
+    if (!rest) { deg = walk(R, deg); out.push({ step, len, deg }); }
+    step += len;
+  }
+  return out;
+}
+function vary(R, m) { const c = m.map(n => ({ ...n })); for (let i = Math.max(0, c.length - 3); i < c.length; i++) c[i].deg = walk(R, c[i].deg); return c; }
+function buildSong() {
+  const R = rng(7741), ev = { kick: [], snare: [], hat: [], bass: [], lead: [] }, secs = [], motifs = {};
+  let bar = 0;
+  for (const [name, bars, energy] of SECTIONS) {
+    const s0 = bar * BAR; secs.push({ name, start: s0, end: (bar + bars) * BAR, energy });
+    for (let b = 0; b < bars; b++, bar++) {
+      const t0 = bar * BAR, root = CHORDS[bar % 4];
+      for (let beat = 0; beat < 4; beat++) {
+        const tb = t0 + beat * BEAT;
+        if (name === 'intro') { if (beat === 0 || (b >= 2 && beat === 2)) ev.kick.push(tb); }
+        else if (energy >= 2) ev.kick.push(tb);
+        else if (beat === 0 || beat === 2) ev.kick.push(tb);
+        if (name !== 'intro' && (beat === 1 || beat === 3)) ev.snare.push(tb);
+        const hs = energy >= 2 ? 4 : 2;
+        for (let h = 0; h < hs; h++) ev.hat.push({ t: tb + h * BEAT / hs, open: energy >= 2 && h === 2 });
+      }
+      if (name !== 'intro' || b >= 2) {
+        for (let e = 0; e < 8; e++) if (energy >= 1 || e % 2 === 0) ev.bass.push({ t: t0 + e * BEAT / 2, len: BEAT / 2 * 0.85, midi: root + (e === 7 && energy >= 2 ? 12 : 0) });
+      }
+    }
+    if (name === 'verse' || name === 'chorus' || name === 'break') {
+      if (!motifs[name]) motifs[name] = [makeMotif(R, name), makeMotif(R, name)];
+      const [A, B] = motifs[name];
+      const order = bars === 8 ? [A, B, A, vary(R, B)] : [A, vary(R, A)];
+      order.forEach((m, i) => m.forEach(n => ev.lead.push({ t: s0 + i * 2 * BAR + n.step * STEP, len: n.len * STEP, deg: n.deg, midi: SCALE[n.deg], sec: name, step: n.step })));
+    }
+  }
+  ev.kick.push(bar * BAR); ev.bass.push({ t: bar * BAR, len: 1.4, midi: 45 });
+  return { ev, secs, length: bar * BAR + 1.6 };
+}
+
+/* ---------- 채보 만들기 (난이도별) ---------- */
+function buildChart(song, diff) {
+  const R = rng({ easy: 11, normal: 22, hard: 33 }[diff]);
+  const D = {
+    easy: { grid: 4, minGap: 0.48, hold: 8, holdP: 0.7, chord: 0 },
+    normal: { grid: 2, minGap: 0.12, hold: 4, holdP: 0.55, chord: 0.5 },
+    hard: { grid: 1, minGap: 0.06, hold: 4, holdP: 0.7, chord: 1 }
+  }[diff];
+  const src = [];
+  song.ev.lead.forEach(n => {
+    const onGrid = n.step % D.grid === 0 || (diff === 'normal' && n.sec === 'chorus' && n.len === 1);
+    if (onGrid) src.push({ t: n.t, len: n.len, deg: n.deg, step: n.step, sec: n.sec, kind: 'lead' });
+  });
+  song.secs.filter(s => s.name === 'intro' || s.name === 'outro').forEach(s => {
+    song.ev.kick.filter(t => t >= s.start && t < s.end).forEach(t => src.push({ t, kind: 'kick' }));
+    if (diff !== 'easy') song.ev.snare.filter(t => t >= s.start && t < s.end).forEach(t => src.push({ t, kind: 'snare' }));
+  });
+  if (diff === 'hard') { // 어려움: 벌스·후렴의 스네어도 노트로
+    song.secs.filter(s => s.name === 'verse' || s.name === 'chorus').forEach(s => {
+      song.ev.snare.filter(t => t >= s.start && t < s.end && !src.some(e => Math.abs(e.t - t) < 0.1)).forEach(t => src.push({ t, kind: 'snare' }));
+    });
+  }
+  src.sort((a, b) => a.t - b.t);
+  const notes = [], free = [0, 0, 0, 0];
+  let lastT = -9, prevLane = 1, prevDeg = null, holdUntil = 0, side = 0;
+  const near = (lane, t) => { // 같은 레인 연타(너무 빠른) 피하기
+    const order = [lane, lane + 1, lane - 1, lane + 2, lane - 2, lane + 3, lane - 3].filter(l => l >= 0 && l < 4);
+    for (const l of order) if (free[l] <= t - 0.02 && !(l === prevLane && t - lastT < 0.3)) return l;
+    for (const l of order) if (free[l] <= t - 0.02) return l;
+    return -1;
+  };
+  for (const e of src) {
+    if (e.t - lastT < D.minGap - 1e-6) continue;
+    if (diff !== 'hard' && e.t < holdUntil - 1e-6) continue;
+    let lane;
+    if (e.kind === 'kick') { lane = side ? 3 : 0; side ^= 1; }
+    else if (e.kind === 'snare') lane = side ? 2 : 1;
+    else if (prevDeg === null) lane = 1;
+    else { const d = e.deg - prevDeg; lane = prevLane + (d > 0 ? (d > 1 ? 2 : 1) : d < 0 ? (d < -1 ? -2 : -1) : 0); if (lane > 3) lane = 2 - Math.floor(R() * 2); if (lane < 0) lane = 1 + Math.floor(R() * 2); }
+    lane = near(lane, e.t);
+    if (lane < 0) continue;
+    const n = { t: e.t, lane, end: null };
+    if (e.kind === 'lead' && e.len >= D.hold * STEP && R() < D.holdP) {
+      n.end = e.t + Math.max(0.3, e.len - STEP * 1.5);
+      if (diff !== 'hard') holdUntil = n.end + 0.05;
+    }
+    free[lane] = (n.end || n.t) + 0.12;
+    notes.push(n);
+    if (D.chord && e.kind === 'lead' && !n.end && (diff === 'hard' ? e.sec !== 'break' && e.step % 4 === 0 && R() < (e.sec === 'chorus' ? 0.7 : 0.35) : e.sec === 'chorus' && e.step % 8 === 0 && R() < (e.step % 16 === 0 ? D.chord : D.chord * 0.4))) {
+      const opts = lane < 2 ? [2, 3] : [0, 1];
+      const l2 = opts[Math.floor(R() * 2)];
+      if (free[l2] <= e.t - 0.02) { notes.push({ t: e.t, lane: l2, end: null }); free[l2] = e.t + 0.12; }
+    }
+    lastT = e.t; prevLane = lane; if (e.kind === 'lead') prevDeg = e.deg;
+  }
+  return notes.sort((a, b) => a.t - b.t || a.lane - b.lane);
+}
+
+const SONG = buildSong();
+const CHARTS = { easy: buildChart(SONG, 'easy'), normal: buildChart(SONG, 'normal'), hard: buildChart(SONG, 'hard') };
+
+/* ---------- 소리 ---------- */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function scheduleSong(ac, out, t0, song) {
+  const nb = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.5), ac.sampleRate);
+  const nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const env = (g, t, peak, a, d) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
+  const noise = (t, dur, type, freq, peak) => {
+    const s = ac.createBufferSource(); s.buffer = nb;
+    const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = ac.createGain(); env(g, t, peak, 0.002, dur);
+    s.connect(f).connect(g).connect(out); s.start(t); s.stop(t + dur + 0.05);
+  };
+  song.ev.kick.forEach(x => {
+    const t = t0 + x, o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    env(g, t, 0.9, 0.003, 0.28); o.connect(g).connect(out); o.start(t); o.stop(t + 0.35);
+  });
+  song.ev.snare.forEach(x => {
+    const t = t0 + x; noise(t, 0.16, 'highpass', 1600, 0.42);
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.value = 190;
+    env(g, t, 0.25, 0.002, 0.08); o.connect(g).connect(out); o.start(t); o.stop(t + 0.12);
+  });
+  song.ev.hat.forEach(h => noise(t0 + h.t, h.open ? 0.16 : 0.035, 'highpass', 7500, h.open ? 0.09 : 0.11));
+  song.ev.bass.forEach(b => {
+    const t = t0 + b.t, o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain();
+    o.type = 'sawtooth'; o.frequency.value = mtof(b.midi); f.type = 'lowpass'; f.frequency.value = 520; f.Q.value = 4;
+    env(g, t, 0.2, 0.01, b.len); o.connect(f).connect(g).connect(out); o.start(t); o.stop(t + b.len + 0.05);
+  });
+  song.ev.lead.forEach(n => {
+    const t = t0 + n.t, f = ac.createBiquadFilter(), g = ac.createGain();
+    f.type = 'lowpass'; f.frequency.value = 2600; f.Q.value = 2;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.01);
+    g.gain.setValueAtTime(0.11, t + Math.max(0.02, n.len * 0.7)); g.gain.exponentialRampToValueAtTime(0.0001, t + n.len + 0.06);
+    [['square', 0], ['sawtooth', 7]].forEach(([type, det]) => {
+      const o = ac.createOscillator(); o.type = type; o.frequency.value = mtof(n.midi); o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(t + n.len + 0.1);
+    });
+    f.connect(g).connect(out);
+  });
+}
+
+/* ---------- 게임 상태 ---------- */
+const cv = $('#field'), ctx = cv.getContext('2d');
+let W = 0, H = 0, laneW = 80, x0 = 0, judgeY = 0, U = 1, keyH = 60;
+let G = null;
+function fit() {
+  W = cv.parentElement.clientWidth;
+  H = Math.round(Math.max(440, Math.min(760, innerHeight * 0.8)));
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  U = cfg.ui / 100;
+  laneW = Math.min(Math.round(100 * U), Math.floor((W - 24) / 4)); x0 = Math.round((W - laneW * 4) / 2);
+  keyH = Math.round(64 * U);
+  judgeY = Math.min(Math.round(H * cfg.judge / 100), H - keyH - 24);
+}
+const songTime = () => G.ac.currentTime - G.t0 - ((G.ac.outputLatency || 0) + cfg.offset / 1000);
+const showOv = id => ['menu', 'pause', 'result'].forEach(k => { $('#' + k).hidden = k !== id; });
+
+function start() {
+  if (G && G.ac) { try { G.ac.close(); } catch (e) {} }
+  let ac;
+  try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); } catch (e) { ac = null; }
+  if (!ac) { $('#best-line').textContent = '이 브라우저에서는 소리를 낼 수 없어요.'; return; }
+  const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
+  const master = ac.createGain(); master.gain.value = 0.8; master.connect(comp);
+  const t0 = ac.currentTime + LEAD_IN;
+  scheduleSong(ac, master, t0, SONG);
+  const notes = CHARTS[cfg.diff].map(n => ({ ...n, state: 0 }));
+  const lanes = [[], [], [], []]; notes.forEach(n => lanes[n.lane].push(n));
+  G = {
+    ac, master, t0, notes, lanes, laneIdx: [0, 0, 0, 0], holding: [null, null, null, null], pressed: [false, false, false, false],
+    counts: { p: 0, g: 0, o: 0, m: 0 }, combo: 0, maxCombo: 0, sum: 0, judged: 0,
+    total: notes.length + notes.filter(n => n.end).length, deltas: [], paused: false, done: false, fx: [], jt: null, flash: [0, 0, 0, 0], diff: cfg.diff
+  };
+  showOv(null);
+  document.documentElement.classList.add('playing');
+  $('#stage').scrollIntoView({ block: 'center' });
+}
+function judge(kind, delta) {
+  G.counts[kind]++; G.sum += { p: 1, g: 0.7, o: 0.4, m: 0 }[kind]; G.judged++;
+  if (kind === 'm') G.combo = 0; else { G.combo++; if (G.combo > G.maxCombo) G.maxCombo = G.combo; }
+  if (delta != null) G.deltas.push(delta);
+  G.jt = { kind, at: performance.now(), delta };
+}
+const burst = (l, kind) => G.fx.push({ l, at: performance.now(), kind });
+function press(l) {
+  G.pressed[l] = true; G.flash[l] = performance.now();
+  const t = songTime(), n = G.lanes[l][G.laneIdx[l]];
+  if (!n) return;
+  const d = t - n.t, a = Math.abs(d);
+  if (a > W_O) return; // 너무 이르면 무시
+  const k = a <= W_P ? 'p' : a <= W_G ? 'g' : 'o';
+  judge(k, d); burst(l, k); G.laneIdx[l]++;
+  if (n.end) { n.state = 1; G.holding[l] = n; } else n.state = 2;
+}
+function release(l) {
+  G.pressed[l] = false;
+  const h = G.holding[l]; if (!h) return;
+  if (songTime() >= h.end - 0.12) { judge('p'); burst(l, 'p'); } else judge('m');
+  h.state = 2; G.holding[l] = null;
+}
+function update() {
+  if (!G || G.paused || G.done) return;
+  const t = songTime();
+  for (let l = 0; l < 4; l++) {
+    const L = G.lanes[l];
+    while (G.laneIdx[l] < L.length) {
+      const n = L[G.laneIdx[l]];
+      if (t - n.t > W_O) { n.state = 2; judge('m'); if (n.end) judge('m'); G.laneIdx[l]++; } else break;
+    }
+    const h = G.holding[l];
+    if (h && t >= h.end) { h.state = 2; judge('p'); burst(l, 'p'); G.holding[l] = null; }
+  }
+  if (t > SONG.length) finish();
+}
+function pause() {
+  if (!G || G.done || G.paused) return;
+  G.paused = true; try { G.ac.suspend(); } catch (e) {}
+  document.documentElement.classList.remove('playing');
+  showOv('pause');
+}
+function resume() {
+  if (!G || !G.paused) return;
+  G.paused = false; G.pressed = [false, false, false, false];
+  try { G.ac.resume(); } catch (e) {}
+  document.documentElement.classList.add('playing');
+  showOv(null);
+}
+function quitToMenu() {
+  setView(false);
+  if (G && G.ac) { try { G.ac.close(); } catch (e) {} }
+  G = null; document.documentElement.classList.remove('playing');
+  refreshMenu(); showOv('menu');
+}
+function finish() {
+  G.done = true;
+  document.documentElement.classList.remove('playing');
+  const ac = G.ac;
+  try { G.master.gain.setTargetAtTime(0.0001, ac.currentTime, 0.4); setTimeout(() => { try { ac.close(); } catch (e) {} }, 2000); } catch (e) {}
+  const acc = G.sum / G.total * 100, score = Math.round(1e6 * G.sum / G.total);
+  const grade = acc >= 95 ? 'S' : acc >= 90 ? 'A' : acc >= 80 ? 'B' : acc >= 70 ? 'C' : 'D';
+  const fc = G.counts.m === 0;
+  const bests = store.get('askl.best', {}), prev = bests[G.diff];
+  const isNew = !prev || score > prev.score;
+  if (isNew) { bests[G.diff] = { score, grade, acc: Math.round(acc * 10) / 10, combo: G.maxCombo, fc, date: Date.now() }; store.set('askl.best', bests); }
+  $('#r-grade').textContent = grade;
+  $('#r-score').innerHTML = score.toLocaleString('ko-KR') + (isNew ? '<span class="tag">최고 기록</span>' : '');
+  $('#r-sub').textContent = `${DIFF_NAME[G.diff]} · 정확도 ${acc.toFixed(1)}% · 최대 콤보 ${G.maxCombo}${fc ? ' · 풀콤보!' : ''}`;
+  ['p', 'g', 'o', 'm'].forEach(k => { $('#r-' + k).textContent = G.counts[k]; });
+  const ds = G.deltas;
+  if (ds.length >= 10) {
+    const avg = ds.reduce((a, b) => a + b, 0) / ds.length * 1000;
+    const a = Math.round(Math.abs(avg));
+    $('#r-timing').textContent = a < 10 ? `타이밍이 잘 맞았어요. 평균 ${a}ms 차이예요.` : `평균 ${a}ms ${avg > 0 ? '늦게' : '빨리'} 눌렀어요.`;
+    const next = Math.max(-150, Math.min(150, Math.round((cfg.offset + avg) / 5) * 5));
+    $('#sync-row').hidden = a < 15 || next === cfg.offset;
+    $('#sync').textContent = `싱크 자동 맞추기 (${cfg.offset}ms → ${next}ms)`;
+    $('#sync').onclick = () => { cfg.offset = next; saveCfg(); refreshMenu(); $('#sync-row').hidden = true; $('#r-timing').textContent = `싱크를 ${next}ms로 바꿨어요. 다시 해보세요.`; };
+  } else { $('#r-timing').textContent = ''; $('#sync-row').hidden = true; }
+  renderBests();
+  showOv('result');
+  $('#again').focus({ preventScroll: true });
+}
+
+/* ---------- 입력 ---------- */
+const playing = () => G && !G.done && !G.paused;
+document.addEventListener('keydown', e => {
+  if (capturing >= 0) { captureKey(e); return; }
+  const l = cfg.keys.indexOf(e.code);
+  if (playing()) {
+    if (l >= 0) { e.preventDefault(); if (!e.repeat && !G.pressed[l]) press(l); return; }
+    if (e.code === 'Escape') { e.preventDefault(); pause(); return; }
+    if (['Space', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', 'Enter'].includes(e.code)) e.preventDefault();
+    return;
+  }
+  if (G && G.paused && !G.done) {
+    if (e.code === 'Escape') { e.preventDefault(); resume(); }
+    else if (e.code === 'KeyR') { e.preventDefault(); start(); }
+    return;
+  }
+  if (!$('#menu').hidden && !$('#menu-main').hidden && (e.code === 'Enter' || e.code === 'NumpadEnter')) { e.preventDefault(); start(); }
+  else if (!$('#menu').hidden && !$('#menu-set').hidden && e.code === 'Escape') { e.preventDefault(); setView(false); }
+  else if (!$('#result').hidden && (e.code === 'KeyR' || e.code === 'Enter')) { e.preventDefault(); start(); }
+  else if (!$('#result').hidden && e.code === 'Escape') { e.preventDefault(); quitToMenu(); }
+});
+document.addEventListener('keyup', e => {
+  const l = cfg.keys.indexOf(e.code);
+  if (l >= 0 && playing()) { e.preventDefault(); release(l); }
+});
+addEventListener('blur', () => { if (playing()) pause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && playing()) pause(); });
+addEventListener('wheel', e => { if (playing()) e.preventDefault(); }, { passive: false });
+const touchLane = new Map();
+cv.addEventListener('pointerdown', e => {
+  if (!playing() || e.pointerType === 'mouse' && e.button !== 0) return;
+  const rect = cv.getBoundingClientRect(), l = Math.floor((e.clientX - rect.left - x0) / laneW);
+  if (l < 0 || l > 3) return;
+  e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  touchLane.set(e.pointerId, l); if (!G.pressed[l]) press(l);
+});
+const lift = e => { const l = touchLane.get(e.pointerId); if (l == null) return; touchLane.delete(e.pointerId); if (playing()) release(l); };
+cv.addEventListener('pointerup', lift); cv.addEventListener('pointercancel', lift);
+addEventListener('touchmove', e => { if (playing()) e.preventDefault(); }, { passive: false });
+
+$('#go').addEventListener('click', start);
+$('#resume').addEventListener('click', resume);
+$('#restart').addEventListener('click', start);
+$('#tomenu').addEventListener('click', quitToMenu);
+$('#again').addEventListener('click', start);
+$('#back').addEventListener('click', quitToMenu);
+
+/* ---------- 메뉴 ---------- */
+document.querySelectorAll('input[name="diff"]').forEach(el => {
+  el.checked = el.value === cfg.diff;
+  el.addEventListener('change', () => { cfg.diff = el.value; saveCfg(); refreshMenu(); });
+});
+const speedEl = $('#speed'), offEl = $('#offset');
+speedEl.addEventListener('input', () => { cfg.speed = Number(speedEl.value); saveCfg(); refreshMenu(); });
+offEl.addEventListener('input', () => { cfg.offset = Number(offEl.value); saveCfg(); refreshMenu(); });
+function refreshMenu() {
+  speedEl.value = cfg.speed; offEl.value = cfg.offset; judgeEl.value = cfg.judge;
+  $('#judge-o').textContent = cfg.judge + '%';
+  $('#speed-o').textContent = cfg.speed.toFixed(1) + '배';
+  $('#offset-o').textContent = (cfg.offset > 0 ? '+' : '') + cfg.offset + 'ms';
+  ['easy', 'normal', 'hard'].forEach(d => { $('#c-' + d).textContent = CHARTS[d].length + '노트'; });
+  const b = store.get('askl.best', {})[cfg.diff];
+  $('#best-line').textContent = b ? `${DIFF_NAME[cfg.diff]} 최고 기록: ${b.grade} · ${b.score.toLocaleString('ko-KR')}점 · 정확도 ${b.acc}%${b.fc ? ' · 풀콤보' : ''}` : `${DIFF_NAME[cfg.diff]} 난이도는 아직 기록이 없어요.`;
+}
+function renderBests() {
+  const bests = store.get('askl.best', {});
+  const rows = ['easy', 'normal', 'hard'].map(d => {
+    const b = bests[d];
+    return b ? `<tr><td>${DIFF_NAME[d]}</td><td class="n"><b>${b.grade}</b></td><td class="n">${b.score.toLocaleString('ko-KR')}</td><td class="n">${b.acc}%</td><td class="n">${b.combo}${b.fc ? ' FC' : ''}</td></tr>`
+      : `<tr><td>${DIFF_NAME[d]}</td><td colspan="4" style="color:var(--muted)">아직 없음</td></tr>`;
+  }).join('');
+  $('#bests').innerHTML = `<table><thead><tr><th>난이도</th><th>등급</th><th>점수</th><th>정확도</th><th>최대 콤보</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- 설정 ---------- */
+let capturing = -1;
+function setView(open) { $('#menu-main').hidden = open; $('#menu-set').hidden = !open; capturing = -1; renderBinds(); (open ? $('#close-set') : $('#open-set')).focus({ preventScroll: true }); }
+function renderBinds() {
+  $('#binds').innerHTML = cfg.keys.map((k, i) => `<button type="button" class="bind${capturing === i ? ' wait' : ''}" style="--c:${COLORS[i]}" data-i="${i}">${capturing === i ? '?' : keyLabel(k)}<small>${i + 1}번 레인</small></button>`).join('');
+  $('#binds').querySelectorAll('.bind').forEach(b => b.addEventListener('click', () => { capturing = capturing === +b.dataset.i ? -1 : +b.dataset.i; renderBinds(); }));
+  $('#bind-hint').textContent = capturing >= 0 ? `${capturing + 1}번 레인에 쓸 키를 누르세요. 취소는 Esc.` : '바꿀 레인을 누르고 원하는 키를 누르세요. 이미 쓰는 키면 두 레인이 서로 바뀌어요.';
+  cfg.keys.forEach((k, i) => { $('#cap' + i).textContent = keyLabel(k); });
+  $('#best-line') && refreshMenuKeys();
+}
+function refreshMenuKeys() { document.querySelector('header p').textContent = `떨어지는 노트가 판정선에 닿을 때 ${cfg.keys.map(keyLabel).join(' · ')} 키를 누르는 4키 리듬게임`; }
+function captureKey(e) {
+  e.preventDefault();
+  if (e.code === 'Escape') { capturing = -1; renderBinds(); return; }
+  if (['Enter', 'NumpadEnter', 'MetaLeft', 'MetaRight', ''].includes(e.code)) return;
+  const i = capturing, j = cfg.keys.indexOf(e.code);
+  if (j >= 0 && j !== i) cfg.keys[j] = cfg.keys[i];
+  cfg.keys[i] = e.code; capturing = -1; saveCfg(); renderBinds();
+}
+document.querySelectorAll('input[name="ui"]').forEach(el => {
+  el.checked = Number(el.value) === cfg.ui;
+  el.addEventListener('change', () => { cfg.ui = Number(el.value); saveCfg(); fit(); });
+});
+const judgeEl = $('#judge');
+judgeEl.addEventListener('input', () => { cfg.judge = Number(judgeEl.value); saveCfg(); refreshMenu(); fit(); });
+$('#open-set').addEventListener('click', () => setView(true));
+$('#close-set').addEventListener('click', () => setView(false));
+$('#reset-set').addEventListener('click', () => {
+  Object.assign(cfg, { ui: DEFAULTS.ui, judge: DEFAULTS.judge, offset: DEFAULTS.offset, keys: DEFAULT_KEYS.slice() });
+  saveCfg(); document.querySelectorAll('input[name="ui"]').forEach(el => { el.checked = Number(el.value) === cfg.ui; });
+  refreshMenu(); renderBinds(); fit();
+});
+
+/* ---------- 그리기 ---------- */
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function draw() {
+  const now = performance.now();
+  const live = G && !G.done;
+  const t = live ? songTime() : 10 + (now / 1000) % 24;
+  const notes = live ? G.notes : CHARTS[cfg.diff];
+  const pps = H * 0.42 * cfg.speed;
+  ctx.fillStyle = '#120f1f'; ctx.fillRect(0, 0, W, H);
+
+  const bt = ((t % BEAT) + BEAT) % BEAT, pulse = t >= 0 ? Math.exp(-bt * 9) : 0;
+  for (let l = 0; l < 4; l++) {
+    const x = x0 + l * laneW;
+    ctx.fillStyle = l % 3 === 0 ? 'rgba(255,181,71,0.05)' : 'rgba(127,214,255,0.05)';
+    ctx.fillRect(x, 0, laneW, H);
+    if (live && G.pressed[l]) {
+      const g = ctx.createLinearGradient(0, judgeY, 0, judgeY - H * 0.45);
+      g.addColorStop(0, COLORS[l] + '55'); g.addColorStop(1, COLORS[l] + '00');
+      ctx.fillStyle = g; ctx.fillRect(x, judgeY - H * 0.45, laneW, H * 0.45);
+    }
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let l = 0; l <= 4; l++) { const x = x0 + l * laneW + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  ctx.stroke();
+  ctx.fillStyle = `rgba(255,255,255,${0.55 + 0.45 * pulse})`;
+  ctx.fillRect(x0, judgeY - 2, laneW * 4, 4);
+
+  // 노트
+  const ahead = judgeY / pps + 0.2;
+  for (const n of notes) {
+    if (n.t - t > ahead) break;
+    if (live && n.state === 2) continue;
+    const end = n.end || n.t;
+    if (end < t - 0.3) continue;
+    const x = x0 + n.lane * laneW, c = COLORS[n.lane];
+    const holdingNow = live && n.state === 1;
+    let y = judgeY - (n.t - t) * pps;
+    if (holdingNow) y = judgeY;
+    if (n.end) {
+      const ye = judgeY - (n.end - t) * pps;
+      ctx.fillStyle = c + (holdingNow ? 'aa' : '55');
+      rr(x + laneW * 0.24, ye, laneW * 0.52, Math.max(0, y - ye), 6 * U); ctx.fill();
+    }
+    if (y > H + 20) continue;
+    const nh = Math.max(8, Math.round(18 * U)), pad = Math.max(3, 5 * U);
+    ctx.fillStyle = c; rr(x + pad, y - nh / 2, laneW - pad * 2, nh, 6 * U); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(x + pad + 7 * U, y - nh / 2 + 3 * U, laneW - pad * 2 - 14 * U, Math.max(2, 3 * U));
+  }
+
+  // 키
+  for (let l = 0; l < 4; l++) {
+    const x = x0 + l * laneW, on = live && G.pressed[l];
+    ctx.fillStyle = on ? COLORS[l] : 'rgba(255,255,255,0.06)';
+    rr(x + 5 * U, judgeY + 14 * U, laneW - 10 * U, keyH, 10 * U); ctx.fill();
+    ctx.strokeStyle = COLORS[l] + (on ? 'ff' : '66'); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = on ? '#120f1f' : COLORS[l];
+    const lab = keyLabel(cfg.keys[l]);
+    ctx.font = `700 ${Math.round((lab.length > 2 ? 13 : 22) * U)}px "Chakra Petch", "IBM Plex Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(lab, x + laneW / 2, judgeY + 14 * U + keyH / 2);
+  }
+
+  if (!live) return;
+  // 타격 효과
+  G.fx = G.fx.filter(f => now - f.at < 260);
+  for (const f of G.fx) {
+    const p = (now - f.at) / 260, cx = x0 + f.l * laneW + laneW / 2;
+    ctx.globalAlpha = 1 - p; ctx.strokeStyle = f.kind === 'p' ? '#ffe66d' : COLORS[f.l]; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(cx, judgeY, laneW * (0.35 + p * 0.5), (14 + p * 22) * U, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // 판정, 콤보
+  const cx = x0 + laneW * 2, jy = judgeY - judgeY * 0.36;
+  if (G.jt && now - G.jt.at < 550) {
+    const k = G.jt.kind, age = now - G.jt.at, s = age < 80 ? 1.18 - age / 80 * 0.18 : 1;
+    ctx.globalAlpha = age > 400 ? 1 - (age - 400) / 150 : 1;
+    ctx.save(); ctx.translate(cx, jy); ctx.scale(s, s);
+    ctx.font = `700 ${Math.round(30 * U)}px "Chakra Petch", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = { p: '#ffe66d', g: '#7fd6ff', o: '#b9f28a', m: '#ff5c7a' }[k];
+    ctx.fillText({ p: 'PERFECT', g: 'GREAT', o: 'GOOD', m: 'MISS' }[k], 0, 0);
+    if ((k === 'g' || k === 'o') && G.jt.delta != null) {
+      ctx.font = `500 ${Math.round(14 * U)}px "IBM Plex Sans KR", sans-serif`; ctx.fillStyle = '#c9c4dc';
+      ctx.fillText(G.jt.delta < 0 ? '빠름' : '느림', 0, 26 * U);
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  if (G.combo >= 3) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `700 ${Math.round(46 * U)}px "Chakra Petch", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText(G.combo, cx, jy - 58 * U);
+    ctx.font = `600 ${Math.round(12 * U)}px "Chakra Petch", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText('COMBO', cx, jy - 28 * U);
+  }
+  // 카운트다운
+  if (t < 0) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '700 64px "Chakra Petch", sans-serif'; ctx.fillStyle = '#ffffff';
+    ctx.fillText(Math.ceil(-t), cx, H * 0.38);
+    ctx.font = '500 15px "IBM Plex Sans KR", sans-serif'; ctx.fillStyle = '#c9c4dc';
+    ctx.fillText(cfg.keys.map(keyLabel).join(' · '), cx, H * 0.38 + 48);
+  }
+  // 상단 정보
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, 0, W, 4);
+  ctx.fillStyle = '#ffb547'; ctx.fillRect(0, 0, W * Math.max(0, Math.min(1, t / SONG.length)), 4);
+  const score = Math.round(1e6 * G.sum / G.total), acc = G.judged ? G.sum / G.judged * 100 : 100;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.font = '700 22px "Chakra Petch", sans-serif'; ctx.fillStyle = '#ffffff';
+  ctx.fillText(score.toLocaleString('ko-KR'), W - 14, 14);
+  ctx.font = '600 14px "Chakra Petch", sans-serif'; ctx.fillStyle = '#c9c4dc';
+  ctx.fillText(acc.toFixed(1) + '%', W - 14, 42);
+  ctx.textAlign = 'left'; ctx.fillText(DIFF_NAME[G.diff], 14, 16);
+}
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+/* ---------- 시작 ---------- */
+const m = Math.floor(SONG.length / 60), s = Math.round(SONG.length % 60);
+$('#len').textContent = `${m}:${String(s).padStart(2, '0')}`;
+fit(); refreshMenu(); renderBests(); renderBinds();
+let rz = 0; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(fit, 100); });
+window.__askl = { get G() { return G; }, CHARTS, SONG, start, songTime: () => G && songTime() };
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
